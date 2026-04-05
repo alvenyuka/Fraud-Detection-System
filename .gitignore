@@ -1,0 +1,54 @@
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+.env
+.env.*
+venv/
+.venv/
+ENV/
+env/
+
+# ── Jupyter ───────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+profile_default/
+ipython_config.py
+
+# ── Data files (never commit raw data) ───────────────────────────────────────
+data/raw/
+*.csv
+*.parquet
+*.feather
+*.h5
+*.hdf5
+
+# ── Trained models ────────────────────────────────────────────────────────────
+models/*.pkl
+models/*.joblib
+*.model
+*.bin
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+Thumbs.db
+ehthumbs.db
+
+# ── Logs & temp ───────────────────────────────────────────────────────────────
+*.log
+*.tmp
+.cache/
