@@ -31,11 +31,11 @@ Held-out future window (test set: steps 491–743, 132,136 transactions, 2,754 f
 
 Mobile money fraud costs the African financial industry billions annually, and a naive model that predicts *"not fraud"* on every transaction scores 99.87% accuracy while catching zero fraud. That single fact reframes the entire problem:
 
-- **Accuracy is a trap** — the class imbalance does the work for you.
-- **ROC-AUC is inflated** — the massive true-negative count drags the curve up regardless of fraud-class performance.
-- **PR-AUC is the only honest metric** — it lives entirely on the precision-recall tradeoff among the positive class, which is where the business loss actually sits.
+- **Accuracy is a trap** - the class imbalance does the work for you.
+- **ROC-AUC is inflated** - the massive true-negative count drags the curve up regardless of fraud-class performance.
+- **PR-AUC is the only honest metric** - it lives entirely on the precision-recall tradeoff among the positive class, which is where the business loss actually sits.
 
-This notebook walks the full reasoning chain — from EDA findings to feature engineering to model selection to operating-point tuning — that a fraud-ops team needs to defend a deployment.
+This notebook walks the full reasoning chain - from EDA findings to feature engineering to model selection to operating-point tuning — that a fraud-ops team needs to defend a deployment.
 
 ---
 
@@ -47,7 +47,8 @@ This notebook walks the full reasoning chain — from EDA findings to feature en
 4. **Zero balances are a feature, not a bug.** 49% of fraudulent transactions have zero destination balances vs. 0.06% of genuine ones. Zeros were imputed with **−1 sentinel for destinations** (preserve the fraud signal) and **NaN for origins** (let the model handle missingness natively).
 5. **Fraudsters do not keep office hours.** Overall fraud rate is 0.13%; the non-business-hours fraud rate (22:00–06:00) is **0.60%** — nearly 5× higher. Fraud volume is roughly flat across the 24-hour cycle while legitimate volume collapses overnight.
 
-![Dispersion over time](./images/01_dispersion_over_time.jpg)
+<img width="1384" height="884" alt="01_dispersion_over_time" src="https://github.com/user-attachments/assets/88d84db0-396e-41c1-b7b8-10e860aa89f3" />
+
 *Genuine transactions (left) show striped patterns reflecting business hours. Fraud (right) is spread uniformly — the rate spike during off-hours is purely a denominator effect.*
 
 ---
@@ -63,7 +64,8 @@ For any legitimate transaction, this accounting identity should hold:
 
 Any deviation is a **balance discrepancy**. The engineered features `errorBalanceOrig` and `errorBalanceDest` show **opposite polarity** for fraud vs. genuine — the literal "fingerprint" the model picks up.
 
-![Balance discrepancy fingerprint](./images/02_balance_discrepancy_fingerprint.png)
+<img width="1320" height="894" alt="02_balance_discrepancy_fingerprint" src="https://github.com/user-attachments/assets/d8636ed5-da0f-43b7-99b8-a705aa14d4af" />
+
 *The engineered `errorBalanceDest` feature shows opposite polarity for fraud vs. genuine transactions. This is the discriminative signal raw features alone don't carry.*
 
 ---
@@ -83,7 +85,8 @@ Random splits leak future information into training and inflate PR-AUC dishonest
 
 **Models evaluated:** Logistic Regression, Random Forest, LightGBM, XGBoost, Stacking Ensemble, plus the `isFlaggedFraud` rule as the honest baseline. All share an identical evaluation harness — same train/test split, same metrics, same operating-point logic.
 
-![PR curve scoreboard](./images/03_pr_curve_scoreboard.png)
+<img width="984" height="584" alt="03_pr_curve_scoreboard" src="https://github.com/user-attachments/assets/0a6dbf76-841f-4630-9bec-7541cef83291" />
+
 *Held-out future window. Random Forest and Stacking achieve perfect AP=1.000; XGBoost AP=0.999. LightGBM underperforms badly (AP=0.245) — out-of-the-box LightGBM is sensitive to extreme imbalance without explicit `scale_pos_weight` tuning. Logistic Regression provides the linear floor.*
 
 ---
@@ -106,15 +109,15 @@ Precision: **99.11%** · Recall: **96.88%** · 24 false positives across 132K tr
 ## Robustness — what makes this defensible cold
 
 ### Calibration
-![Calibration curve](./images/04_calibration_curve.png)
+<img width="784" height="584" alt="04_calibration_curve" src="https://github.com/user-attachments/assets/6130bf9d-f319-4998-88e3-241c62614664" />
 *Brier score = 0.0005 (vs. ~0.0204 for a base-rate model). Predicted probabilities track observed fraud frequency tightly — fraud-ops can rank alerts by score and trust the ordering.*
 
 ### Permutation importance
-![Permutation importance](./images/05_permutation_importance.png)
+<img width="1384" height="484" alt="05_permutation_importance" src="https://github.com/user-attachments/assets/0cbe66d7-ed59-4702-ab7d-a8808a435402" />
 *Tree-based importance over-weights correlated features. Permutation importance is the ground-truth check: shuffle each feature on the test set, measure the PR-AUC drop. The engineered `errorBalanceOrig` and `newBalanceOrig` features carry the irreplaceable signal — `errorBalanceOrig` alone accounts for ~85% of the model's predictive power.*
 
 ### Cost-sensitive threshold sweep
-![Cost-sensitive threshold](./images/06_cost_sensitive_threshold.png)
+<img width="1384" height="484" alt="06_cost_sensitive_threshold" src="https://github.com/user-attachments/assets/8c266e13-d536-4780-aaea-7f02a8f5aebf" />
 *The 99%-precision threshold (0.999) is conservative. Under a 10:1 cost ratio (FN:FP), the cost-minimising threshold drops to 0.300. This sweep gives the client the data to pick a threshold that matches their actual cost structure, not an arbitrary statistical default.*
 
 ### SMOTE ablation
@@ -131,7 +134,7 @@ The delta is negligible. `scale_pos_weight` remains the conservative default —
 
 ## Explainability — SHAP
 
-![SHAP beeswarm](./images/07_shap_beeswarm.png)
+<img width="758" height="534" alt="07_shap_beeswarm" src="https://github.com/user-attachments/assets/3a7dba3a-d05c-416a-9256-0c73c30e9b39" />
 *TreeExplainer on 2,000 held-out test rows. `errorBalanceOrig` dominates global attribution — the feature engineered from the accounting identity, not any raw column. The model also surfaces top-5 highest-risk predictions with their top-3 SHAP drivers each, in the format fraud analysts read directly: alert + reason codes + magnitudes.*
 
 ---
@@ -145,29 +148,3 @@ Stated explicitly because the gap between a notebook and a deployed system is wh
 3. **No graph features.** Every transaction is scored in isolation. Mule networks — A → B → C → D within 24 hours — are a multi-hop pattern that single-transaction scoring misses by construction.
 4. **Concept drift posture, not a drift system.** A calibration curve and walk-forward evaluation establish posture; a deployed system also needs a Population Stability Index (PSI) monitor and distribution-drift alarms. That's infrastructure, not notebook work.
 5. **Single holdout evaluation of the final threshold.** The 99%-precision threshold is selected on the held-out future window — methodologically defensible, but a production system would re-tune on rolling windows.
-
----
-
-## How to run
-
-```bash
-git clone git@github.com:alvenyuka/Fraud-Detection-System.git
-cd Fraud-Detection-System
-pip install -r requirements.txt
-jupyter lab Fraud_Detection_System.ipynb
-```
-
-The PaySim CSV is **not** included in the repo (see `.gitignore`). Download it from Kaggle:
-**Synthetic Financial Datasets For Fraud Detection** → `PS_20174392719_1491204439457_log.csv`
-Place it in the repo root and update the `data_path` entry in the `CONFIG` dictionary at the top of the notebook.
-
----
-
-## About
-
-Built by **Alven Yuka** — Financial Data Scientist, Nairobi.
-CPA Finalist (Strathmore) · BSc Finance (Co-operative University of Kenya) · ALX Africa Data Science · 3 years GIZ accounting operations.
-
-Portfolio focus: **African fintech and DFI risk modeling** — fraud detection, credit scoring, and financial model replication, with the finance-first foundation that makes the modeling defensible to a credit committee, not just a data science panel.
-
-🔗 [GitHub](https://github.com/alvenyuka) · [LinkedIn](https://www.linkedin.com/in/alvenyuka)
