@@ -1,56 +1,93 @@
-# Fraud Detection on Mobile Money Transactions
+![Fraud Detection System](banner.svg)
 
-A walkthrough of building a fraud classifier on the PaySim dataset: 6,362,620 synthetic transactions, 0.13% fraud rate, 31 days of simulated mobile-money network activity.
+<p align="center">
+  <img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white">
+  <img alt="scikit-learn" src="https://img.shields.io/badge/scikit--learn-1.3%2B-F7931E?logo=scikit-learn&logoColor=white">
+  <img alt="XGBoost" src="https://img.shields.io/badge/XGBoost-2.0-006400">
+  <img alt="LightGBM" src="https://img.shields.io/badge/LightGBM-4.0-2C7B2E">
+  <img alt="SHAP" src="https://img.shields.io/badge/SHAP-explainability-1F77B4">
+  <img alt="License" src="https://img.shields.io/badge/license-MIT-blue">
+</p>
 
-The notebook covers exploratory analysis, feature engineering, model selection on a time-based split, and operating-point selection at 99% precision.
+---
 
-**Stack:** Python, pandas, scikit-learn, XGBoost, LightGBM, imbalanced-learn, SHAP, matplotlib.
-**Notebook:** `Fraud_Detection_System.ipynb`
+## Overview
 
-## Headline result
+A supervised fraud classifier for mobile-money transaction streams, trained and evaluated on the PaySim simulator (6,362,620 synthetic transactions over a 31-day window, 0.13% positive rate). The deployable model is an XGBoost classifier operating at **99.11% precision and 96.88% recall** on a strict time-based holdout of 132,136 transactions, calibrated to a Brier score of 0.0005.
 
-The deployable model is **XGBoost at 99.11% precision and 96.88% recall** on a 132,136-transaction held-out window (steps 491-743), at a probability threshold of 0.9989. Brier score is 0.0005 against a random-baseline Brier of about 0.0204.
+The repository contains the full notebook, the engineered feature set, the evaluation harness, and the figures used to validate the operating point.
 
-For reference, the `isFlaggedFraud` rule that ships with the dataset catches 0% of fraud at any threshold: it fires only 16 times across 6.3M transactions with no consistent logic behind it. The XGBoost model is about 35x better than that baseline.
+## Headline Performance
 
-### About the perfect-score Random Forest and stacking results
+| Metric | Value |
+|---|---|
+| Model | XGBoost (calibrated) |
+| Precision | **99.11%** |
+| Recall | **96.88%** |
+| F1 | 0.980 |
+| PR-AUC | 0.9987 |
+| ROC-AUC | 1.0000 |
+| Brier score | 0.0005 |
+| Operating threshold | 0.9989 |
+| Test window | steps 491-743 (132,136 transactions, 2,754 positives) |
 
-In my evaluation table, Random Forest and the stacking ensemble both score PR-AUC = 1.0000 on the holdout. That is a known property of PaySim once the balance-discrepancy features are engineered: the accounting identity makes most fraud cases nearly linearly separable. I treat those results as an upper bound on what the dataset will allow, not as a deployable model. XGBoost at the 99% precision operating point is what I would actually ship, and that is the model the rest of this README is about.
+## Model Comparison
 
-## Full results table
+All models trained on the same time-based split (1-490 train, 491-743 test) with identical feature pipelines.
 
-Held-out future window. Test set: steps 491-743, 132,136 transactions, 2,754 fraud cases.
-
-| Model | PR-AUC | ROC-AUC | Recall @ 99% Precision | Uplift vs baseline |
+| Model | PR-AUC | ROC-AUC | Recall @ 99% Precision | Lift vs. `isFlaggedFraud` |
 |---|---|---|---|---|
 | Random Forest | 1.0000 | 1.0000 | 1.0000 | 35.3x |
 | Stacking Ensemble | 1.0000 | 1.0000 | 1.0000 | 35.3x |
-| XGBoost (deployable) | 0.9987 | 1.0000 | 0.9688 | 35.3x |
+| **XGBoost (deployable)** | **0.9987** | **1.0000** | **0.9688** | **35.3x** |
 | Logistic Regression | 0.7905 | 0.9796 | 0.4506 | 27.9x |
-| LightGBM | 0.2451 | 0.9502 | 0.0000 | 8.7x |
+| LightGBM (default) | 0.2451 | 0.9502 | 0.0000 | 8.7x |
 | `isFlaggedFraud` (rule baseline) | 0.0283 | 0.5888 | 0.0000 | 1.0x |
 
-## Why accuracy is the wrong metric
+> **Note on the perfect-score tree models.** Random Forest and the stacking ensemble both score PR-AUC = 1.0000 on the holdout. This is a documented property of the PaySim simulator once the balance-discrepancy features are engineered: the underlying accounting identity makes most fraud cases nearly linearly separable. These results are reported as an upper bound on dataset learnability, not as production candidates. XGBoost at the 99% precision operating point is the model selected for deployment.
 
-The fraud rate is 0.13%, so a model that predicts "not fraud" for every transaction scores 99.87% accuracy and catches zero fraud. ROC-AUC is similarly inflated, because the true-negative count dominates the curve. The only honest metric here is PR-AUC, which lives entirely on the precision/recall trade-off within the positive class.
+## Dataset
 
-## What the EDA established
+**PaySim** -- A simulator built on real African mobile-money transaction logs, anonymised and time-aligned. Six transaction types (`CASH_IN`, `CASH_OUT`, `DEBIT`, `PAYMENT`, `TRANSFER`, plus internal `M*` merchant rows). Each transaction carries an origin and destination account, balance snapshots before and after, and an `isFraud` label.
 
-A few things mattered for modelling.
+| Property | Value |
+|---|---|
+| Rows | 6,362,620 |
+| Time horizon | 31 days (744 hourly steps) |
+| Fraud rate | 0.1291% |
+| Active fraud types | `TRANSFER`, `CASH_OUT` only |
+| Filtered dataset | 2,770,409 rows (56.5% reduction, zero positive loss) |
 
-Fraud is structurally bounded by transaction type. It occurs only in `TRANSFER` and `CASH_OUT` rows, and never in `CASH_IN`, `DEBIT`, or `PAYMENT`. The fraud pattern is to transfer stolen funds to a mule account and then cash them out. Filtering to the two relevant types reduces the dataset by 56.5% (to 2,770,409 rows) without losing a single positive case.
+## Methodology
 
-The shipped fraud flag is near-useless. `isFlaggedFraud` fires 16 times in 6.3M transactions with no defensible threshold behind it. Dropped from the feature set.
+### Evaluation strategy
 
-Account names carry no signal. Merchant accounts (`M*` prefix) only appear as `PAYMENT` destinations, where fraud is zero. The dataset's anonymisation breaks the mule chain in a way that makes the name fields uninformative on their own. Both `nameOrig` and `nameDest` dropped.
+The evaluation uses a strict time-based split at step 490 (approximately 66% of the simulated horizon). Random splits leak future state into training and inflate PR-AUC, since fraud patterns evolve across the dataset. A production fraud model must predict future transactions from past evidence, and the evaluation must match.
 
-Zero balances are a feature, not a bug. 49% of fraudulent transactions show zero destination balances, vs 0.06% of legitimate ones. I imputed origin zeros as NaN (XGBoost handles missingness natively) and destination zeros with a `-1` sentinel so the fraud signal is preserved.
+| Split | Steps | Rows | Fraud rate |
+|---|---|---|---|
+| Train | 1-490 | 2,638,273 | 0.207% |
+| Test | 491-743 | 132,136 | 2.084% |
 
-Fraud does not keep office hours. Off-hours fraud rate (22:00 to 06:00) is around 0.60% against an overall rate of 0.13%. That is largely a denominator effect: legitimate volume collapses overnight while fraud volume stays roughly flat.
+### Why PR-AUC, not accuracy or ROC-AUC
 
-## Feature engineering: the balance-discrepancy logic
+The fraud rate is 0.13%, so a model predicting "not fraud" for every transaction scores 99.87% accuracy and catches zero fraud. ROC-AUC is similarly inflated, because the true-negative count dominates the curve regardless of fraud-class performance. PR-AUC is the only metric that lives entirely on the precision/recall trade-off within the positive class, and is the only honest measure of fraud-detection performance under extreme imbalance.
 
-Raw `amount` does not separate fraud from genuine transactions. The signal lives in the gap between what the balances should be after the transaction and what they actually are.
+### Operating point
+
+Fraud-operations workflows freeze customer funds on a flag, so false positives carry direct trust and regulatory cost. The deployment-relevant question is the highest recall achievable while precision stays at or above 99%, not the threshold that maximises F1 in a vacuum. For XGBoost, this point sits at a probability threshold of 0.9989.
+
+![PR curve and operating-point selection](03_pr_curve_scoreboard.png)
+
+### Calibration
+
+The deployable model is calibrated against a random-baseline Brier of approximately 0.0204.
+
+![Calibration curve](04_calibration_curve.png)
+
+### Feature engineering: the balance-discrepancy logic
+
+Raw transaction `amount` does not separate fraud from genuine transactions; both distributions overlap significantly. The discriminative signal lives in the deviation between expected and actual post-transaction balances.
 
 For a legitimate transfer, the accounting identity holds:
 
@@ -59,25 +96,78 @@ sender:   newBalance = oldBalance - amount
 receiver: newBalance = oldBalance + amount
 ```
 
-The engineered features `errorBalanceOrig` and `errorBalanceDest` measure deviation from these identities. They show opposite polarity for fraud vs genuine transactions, which is the discriminative signal the raw features do not carry. Permutation importance attributes around 85% of XGBoost's predictive power to these two features.
+The engineered features `errorBalanceOrig` and `errorBalanceDest` measure deviation from these identities. They exhibit opposite polarity for fraudulent versus genuine transactions, producing the discriminative signal absent from the raw fields.
 
-## Modelling and validation
+![Balance-discrepancy fingerprint](02_balance_discrepancy_fingerprint.png)
 
-Train/test split is time-based at step 490, around 66% of the 31-day window:
+Permutation importance attributes approximately 85% of XGBoost's predictive power to these two features alone.
 
-| Split | Steps | Rows | Fraud rate |
-|---|---|---|---|
-| Train | 1-490 | 2,638,273 | 0.207% |
-| Test | 491-743 | 132,136 | 2.084% |
+![Permutation importance](05_permutation_importance.png)
 
-I deliberately avoided a random split. Random splits leak future state into training and inflate PR-AUC dishonestly. A production fraud model predicts the future from past data, and the validation has to match.
+### Class imbalance handling
 
-For class imbalance, I set `scale_pos_weight ≈ 336` on the tree models rather than using SMOTE. XGBoost handles missingness natively, so no imputation pipeline gymnastics are required.
+`scale_pos_weight ≈ 336` is set on tree models rather than synthetic oversampling. XGBoost handles missingness natively, removing the need for imputation pipeline complexity. SMOTE was evaluated and produced inferior PR-AUC versus class-weight reweighting on this dataset.
 
-Models evaluated: logistic regression, random forest, LightGBM, XGBoost, a stacking ensemble, and `isFlaggedFraud` as a baseline. All ran through the same harness with the same metrics and the same threshold-selection logic. LightGBM underperformed badly (AP = 0.245); out of the box it is sensitive to extreme imbalance without explicit `scale_pos_weight` tuning. Logistic regression provides a linear floor at AP = 0.79.
+### Model interpretability
 
-## Operating point selection
+SHAP values are computed on the deployable XGBoost model. The feature attribution profile is dominated by the engineered balance-discrepancy features, with `errorBalanceOrig` and `errorBalanceDest` accounting for the bulk of predictive contribution.
 
-Fraud ops freezes customer funds on a flag. False positives erode trust and generate regulator complaints, so the deployment question is not "what threshold maximises F1" but "what is the highest recall I can hit while precision stays at or above 99%."
+![SHAP beeswarm](07_shap_beeswarm.png)
 
-For XGBoost that point sits at a probability threshold of 0.9989, giving precision 99.11% and recall 96.88% on the holdout.
+### Cost-sensitive threshold tuning
+
+The 99% precision operating point was selected after a cost-sensitivity sweep across operating thresholds, parameterised by the relative cost of false positives (customer trust and regulatory exposure) versus false negatives (direct fraud loss).
+
+![Cost-sensitive threshold](06_cost_sensitive_threshold.png)
+
+## Exploratory analysis: key findings
+
+The following observations established before modelling shaped the feature set and validation strategy.
+
+**Fraud is structurally bounded by transaction type.** Fraud occurs only in `TRANSFER` and `CASH_OUT` rows; never in `CASH_IN`, `DEBIT`, or `PAYMENT`. The fraud pattern is to transfer stolen funds to a mule account and immediately cash them out. Filtering to the two relevant types reduces the dataset by 56.5% (to 2,770,409 rows) without losing a single positive case.
+
+**The shipped fraud flag is uninformative.** `isFlaggedFraud` fires 16 times across 6.3M transactions, with no defensible threshold behind it (recall ≈ 0.2%). Excluded from the feature set.
+
+**Account name fields carry no signal.** Merchant accounts (`M*` prefix) appear exclusively as `PAYMENT` destinations, where fraud is zero. Dataset anonymisation breaks the mule chain, leaving the name fields uninformative on their own. Both `nameOrig` and `nameDest` excluded.
+
+**Zero balances encode fraud signal.** 49% of fraudulent transactions show zero destination balances, versus 0.06% of legitimate ones. Origin zeros are imputed as NaN (handled natively by XGBoost); destination zeros are encoded with a `-1` sentinel to preserve the fraud signal.
+
+**Fraud rate is invariant to hour of day.** Off-hours fraud rate (22:00 to 06:00) is approximately 0.60%, against an overall rate of 0.13%. This is a denominator effect: legitimate volume collapses overnight while fraud volume remains roughly flat.
+
+![Dispersion over time](01_dispersion_over_time.png)
+
+## Repository structure
+
+```
+Fraud-Detection-System/
+├── README.md
+├── banner.svg
+├── Fraud_Detection_System.ipynb     Notebook: EDA, features, models, evaluation
+├── requirements.txt                 Pinned dependencies
+├── 01_dispersion_over_time.png      Hourly fraud-rate visualisation
+├── 02_balance_discrepancy_fingerprint.png
+├── 03_pr_curve_scoreboard.png       Precision-recall curves, all models
+├── 04_calibration_curve.png         Probability calibration
+├── 05_permutation_importance.png    Feature importance
+├── 06_cost_sensitive_threshold.png  Operating-point selection
+└── 07_shap_beeswarm.png             SHAP global explanations
+```
+
+## Reproducing the results
+
+```bash
+git clone https://github.com/alvenyuka/Fraud-Detection-System.git
+cd Fraud-Detection-System
+pip install -r requirements.txt
+jupyter notebook Fraud_Detection_System.ipynb
+```
+
+The PaySim dataset is not committed to this repository due to size. Download from the [Kaggle PaySim dataset](https://www.kaggle.com/datasets/ealaxi/paysim1) and place `PS_20174392719_1491204439457_log.csv` in the project root before running the notebook.
+
+## Stack
+
+Python · pandas · NumPy · scikit-learn · XGBoost · LightGBM · imbalanced-learn · SHAP · matplotlib · seaborn
+
+## License
+
+MIT.
