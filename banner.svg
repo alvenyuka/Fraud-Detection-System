@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Fraud Detection System">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0a1f4a"/>
+      <stop offset="45%" stop-color="#2d2a5c"/>
+      <stop offset="75%" stop-color="#8a3a1f"/>
+      <stop offset="100%" stop-color="#d2691e"/>
+    </linearGradient>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="104%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="2"/>
+      <feOffset dx="0" dy="2" result="offsetblur"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.4"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="1280" height="280" fill="url(#grad)"/>
+  <path d="M0,255 C160,295 400,235 640,265 C880,295 1120,235 1280,260 L1280,320 L0,320 Z" fill="#0d1117" opacity="0.85"/>
+  <path d="M0,275 C200,305 440,255 680,280 C920,305 1100,260 1280,275 L1280,320 L0,320 Z" fill="#0d1117"/>
+  <text x="640" y="120" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="66" font-weight="700" fill="#ffffff" text-anchor="middle" filter="url(#shadow)">Fraud Detection System</text>
+  <text x="640" y="170" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="22" font-weight="500" fill="#ffffff" text-anchor="middle" opacity="0.95">Mobile money fraud classifier  ·  PaySim  ·  6.36M transactions</text>
+  <text x="640" y="210" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="18" font-weight="400" fill="#ffd9b3" text-anchor="middle" opacity="0.95">XGBoost  ·  99.11% precision  ·  96.88% recall  ·  time-based holdout</text>
+</svg>
