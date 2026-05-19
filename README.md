@@ -134,7 +134,7 @@ The following observations established before modelling shaped the feature set a
 
 **Fraud rate is invariant to hour of day.** Off-hours fraud rate (22:00 to 06:00) is approximately 0.60%, against an overall rate of 0.13%. This is a denominator effect: legitimate volume collapses overnight while fraud volume remains roughly flat.
 
-![Dispersion over time](01_dispersion_over_time.png)
+![Dispersion over time](01_dispersion_over_time.jpg)
 
 ## Repository structure
 
@@ -144,7 +144,7 @@ Fraud-Detection-System/
 ├── banner.svg
 ├── Fraud_Detection_System.ipynb     Notebook: EDA, features, models, evaluation
 ├── requirements.txt                 Pinned dependencies
-├── 01_dispersion_over_time.png      Hourly fraud-rate visualisation
+├── 01_dispersion_over_time.jpg      Hourly fraud-rate visualisation
 ├── 02_balance_discrepancy_fingerprint.png
 ├── 03_pr_curve_scoreboard.png       Precision-recall curves, all models
 ├── 04_calibration_curve.png         Probability calibration
