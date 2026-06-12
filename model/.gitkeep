@@ -1,0 +1,4 @@
+# This directory holds the serialised model artifact.
+# The .pkl file is gitignored — run 'make train' to generate it.
+#
+# Output: model/xgb_fraud_model.pkl (~5 MB)
