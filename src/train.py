@@ -24,6 +24,7 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.calibration import CalibratedClassifierCV
+from sklearn.frozen import FrozenEstimator
 from sklearn.metrics import (
     brier_score_loss,
     precision_score,
@@ -32,6 +33,7 @@ from sklearn.metrics import (
     average_precision_score,
     roc_auc_score,
 )
+from sklearn.model_selection import train_test_split
 from xgboost import XGBClassifier
 
 logging.basicConfig(
@@ -137,18 +139,25 @@ def train(data_path: str, model_out: str) -> None:
 
     train_df, test_df = time_based_split(df)
 
-    X_train = train_df[FEATURE_COLS]
-    y_train = train_df["isFraud"]
-    X_test  = test_df[FEATURE_COLS]
-    y_test  = test_df["isFraud"]
+    # Hold out a calibration slice from the training period so isotonic
+    # regression isn't fit on rows XGBoost has already memorised — fitting a
+    # calibrator on the same data used to train the base model overstates
+    # how well-calibrated the model actually is on unseen data.
+    fit_df, calib_df = train_test_split(
+        train_df, test_size=0.2, stratify=train_df["isFraud"], random_state=42
+    )
 
-    log.info("Fitting XGBClassifier ...")
+    X_fit,   y_fit   = fit_df[FEATURE_COLS],   fit_df["isFraud"]
+    X_calib, y_calib = calib_df[FEATURE_COLS], calib_df["isFraud"]
+    X_test,  y_test  = test_df[FEATURE_COLS],  test_df["isFraud"]
+
+    log.info("Fitting XGBClassifier on %d rows ...", len(X_fit))
     xgb = XGBClassifier(**XGB_PARAMS)
-    xgb.fit(X_train, y_train)
+    xgb.fit(X_fit, y_fit)
 
-    log.info("Calibrating probabilities (isotonic) ...")
-    calibrated = CalibratedClassifierCV(xgb, method="isotonic", cv="prefit")
-    calibrated.fit(X_train, y_train)
+    log.info("Calibrating probabilities (isotonic) on %d held-out rows ...", len(X_calib))
+    calibrated = CalibratedClassifierCV(FrozenEstimator(xgb), method="isotonic")
+    calibrated.fit(X_calib, y_calib)
 
     probs = calibrated.predict_proba(X_test)[:, 1]
     preds = (probs >= OPERATING_THRESHOLD).astype(int)

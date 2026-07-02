@@ -9,17 +9,17 @@
 | Field | Value |
 |---|---|
 | **Model type** | XGBoost + isotonic calibration |
-| **Version** | 1.0 |
-| **Date** | 2024 |
-| **Author** | Alven Yuka (CPA Finalist, Kenya) |
+| **Version** | 1.1 |
+| **Date** | 2026 |
+| **Author** | Alven Yuka (CPA, Kenya) |
 | **Contact** | alvenyuka2@gmail.com |
 | **License** | MIT |
 | **Repository** | https://github.com/alvenyuka/Fraud-Detection-System |
 
 ### Architecture
 
-- Base: `XGBClassifier` (500 estimators, max_depth=6, learning_rate=0.1)
-- Post-hoc calibration: `CalibratedClassifierCV(method="isotonic", cv="prefit")`
+- Base: `XGBClassifier` (500 estimators, max_depth=6, learning_rate=0.1), fit on 80% of the training period
+- Post-hoc calibration: `CalibratedClassifierCV(FrozenEstimator(xgb), method="isotonic")`, fit on the held-out 20% of the training period — not on the rows the base model saw, so the calibration curve reflects generalization rather than in-sample fit
 - The calibration wrapper ensures output scores are interpretable as probabilities
 
 ---
@@ -80,16 +80,18 @@ SHAP attribution confirms these four features plus raw balance fields account fo
 
 ## Evaluation
 
+Verified by running `src/train.py` end-to-end against the real PaySim CSV (previous versions of this card reported numbers the script had never actually produced — `cv="prefit"` was removed in scikit-learn ≥1.6, so the script could not run at all until fixed; see [README § Results](README.md#results)).
+
 | Metric | Value | Notes |
 |---|---|---|
-| Precision | **99.11%** | At operating threshold 0.9989 |
-| Recall | **96.88%** | At operating threshold 0.9989 |
-| F1 | 0.980 | At operating threshold 0.9989 |
-| PR-AUC | 0.9987 | Primary metric - honest under class imbalance |
+| Precision | **100.00%** | At operating threshold 0.9989 |
+| Recall | **88.63%** | At operating threshold 0.9989 |
+| F1 | 0.9397 | At operating threshold 0.9989 |
+| PR-AUC | 1.0000 | Primary metric - honest under class imbalance |
 | ROC-AUC | 1.0000 * | See caveat below |
-| Brier score | 0.0005 | vs. random-baseline ~0.0204 |
+| Brier score | 0.000033 | vs. random-baseline ~0.0204; calibrated on a held-out slice, not the training rows |
 
-*ROC-AUC of 1.0000 is a known property of PaySim once balance-discrepancy features are engineered. PR-AUC is the primary metric.*
+*PR-AUC and ROC-AUC of 1.0000 are a known property of PaySim once balance-discrepancy features are engineered — treat this as a documented dataset artifact, not evidence of real-world performance. See "Limitations and Risks" below.*
 
 ---
 
@@ -122,10 +124,10 @@ See [`src/predict.py`](src/predict.py) and [`src/train.py`](src/train.py).
 ## Citation
 
 ```
-@misc{alvenyuka-fraud-2024,
+@misc{alvenyuka-fraud-2026,
   author  = {Alven Yuka},
   title   = {Fraud Detection System - XGBoost on PaySim},
-  year    = {2024},
+  year    = {2026},
   url     = {https://github.com/alvenyuka/Fraud-Detection-System}
 }
 ```
