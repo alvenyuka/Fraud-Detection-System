@@ -163,7 +163,7 @@ MIT — see [`LICENSE`](LICENSE).
 ## Credits
 
 Dataset: Lopez-Rojas, E. A., Elmir, A., & Axelsson, S. (2016). *PaySim: A financial mobile money simulator for fraud detection.*
-Built by **Alven Yuka** — CPA (Kenya), Nairobi.
+Built by **Alven Yuka** — CPA Finalist (Kenya), awaiting ICPAK membership, Nairobi.
 
 ## Connect
 
