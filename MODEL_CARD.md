@@ -11,7 +11,7 @@
 | **Model type** | XGBoost + isotonic calibration |
 | **Version** | 1.1 |
 | **Date** | 2026 |
-| **Author** | Alven Yuka (CPA, Kenya) |
+| **Author** | Alven Yuka (CPA Finalist, Kenya — awaiting ICPAK membership) |
 | **Contact** | alvenyuka2@gmail.com |
 | **License** | MIT |
 | **Repository** | https://github.com/alvenyuka/Fraud-Detection-System |
