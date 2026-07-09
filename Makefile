@@ -2,13 +2,17 @@
 #
 # Usage:
 #   make install          Install Python dependencies
+#   make tune             Search hyperparameters (writes model/best_params.json)
+#   make validate         Walk-forward validation (writes dashboard/data artifacts)
+#   make monitor          PSI drift monitoring (writes dashboard/data/psi_timeline.csv)
 #   make train            Train model on PaySim data
 #   make predict          Score a single transaction (interactive)
 #   make predict-csv      Score transactions.csv -> scored.csv
+#   make dashboard        Launch the live Streamlit dashboard
 #   make notebook         Launch Jupyter Lab
 #   make clean            Remove __pycache__ and build artefacts
 
-.PHONY: install train predict predict-csv notebook clean help
+.PHONY: install tune validate monitor train predict predict-csv dashboard notebook clean help
 
 DATA     ?= PS_20174392719_1491204439457_log.csv
 MODEL    ?= model/xgb_fraud_model.pkl
@@ -20,6 +24,17 @@ PYTHON   := python
 
 install:
 	$(PYTHON) -m pip install -r requirements.txt
+
+# -- Tune / Validate / Monitor -------------------------------------------------
+
+tune: $(DATA)
+	$(PYTHON) src/tune.py --data $(DATA)
+
+validate: $(DATA)
+	$(PYTHON) src/validate.py --data $(DATA)
+
+monitor: $(DATA)
+	$(PYTHON) src/monitoring.py --data $(DATA)
 
 # -- Train -------------------------------------------------------------------
 
@@ -46,6 +61,11 @@ $(MODEL):
 	@echo "Error: model not found at '$(MODEL)'. Run 'make train' first."
 	@exit 1
 
+# -- Dashboard -----------------------------------------------------------------
+
+dashboard:
+	streamlit run dashboard/app.py
+
 # -- Notebook ----------------------------------------------------------------
 
 notebook:
@@ -62,9 +82,13 @@ clean:
 help:
 	@echo ""
 	@echo "  make install          Install dependencies from requirements.txt"
+	@echo "  make tune             Search hyperparameters -> model/best_params.json"
+	@echo "  make validate         Walk-forward validation -> dashboard/data artifacts"
+	@echo "  make monitor          PSI drift monitoring -> dashboard/data/psi_timeline.csv"
 	@echo "  make train            Train on PaySim CSV  (set DATA= to override path)"
 	@echo "  make predict          Score one transaction interactively"
 	@echo "  make predict-csv      Score INPUT csv -> OUTPUT csv"
+	@echo "  make dashboard        Launch the live Streamlit dashboard"
 	@echo "  make notebook         Open Jupyter Lab"
 	@echo "  make clean            Remove __pycache__ files"
 	@echo ""

@@ -9,7 +9,7 @@
 | Field | Value |
 |---|---|
 | **Model type** | XGBoost + isotonic calibration |
-| **Version** | 1.1 |
+| **Version** | 1.2 — tuned hyperparameters, walk-forward validated, drift monitoring added |
 | **Date** | 2026 |
 | **Author** | Alven Yuka (CPA Finalist, Kenya — awaiting ICPAK membership) |
 | **Contact** | alvenyuka2@gmail.com |
@@ -18,9 +18,13 @@
 
 ### Architecture
 
-- Base: `XGBClassifier` (500 estimators, max_depth=6, learning_rate=0.1), fit on 80% of the training period
+- Base: `XGBClassifier`, fit on 80% of the training period. Hyperparameters come from `model/best_params.json` if present (produced by `src/tune.py` — see "Hyperparameter Tuning" below) — otherwise the original hand-picked defaults (500 estimators, max_depth=6, learning_rate=0.1).
 - Post-hoc calibration: `CalibratedClassifierCV(FrozenEstimator(xgb), method="isotonic")`, fit on the held-out 20% of the training period — not on the rows the base model saw, so the calibration curve reflects generalization rather than in-sample fit
 - The calibration wrapper ensures output scores are interpretable as probabilities
+
+### Hyperparameter Tuning
+
+The original hyperparameters were hand-picked and never tested against alternatives. `src/tune.py` now searches ~40 combinations (tree depth, learning rate, regularisation, class-imbalance weighting — see the script's own comments for what each setting controls), scored on 3 time-based windows taken entirely from the training period, so the search never touches the data used for final evaluation below.
 
 ---
 
@@ -84,25 +88,55 @@ Verified by running `src/train.py` end-to-end against the real PaySim CSV (previ
 
 | Metric | Value | Notes |
 |---|---|---|
-| Precision | **100.00%** | At operating threshold 0.9989 |
-| Recall | **88.63%** | At operating threshold 0.9989 |
-| F1 | 0.9397 | At operating threshold 0.9989 |
-| PR-AUC | 1.0000 | Primary metric - honest under class imbalance |
+| Precision | **100.00%** | At operating threshold 0.9989, tuned hyperparameters |
+| Recall | **89.47%** | Up from 88.63% before tuning — a modest, honest gain |
+| F1 | 0.9444 | At operating threshold 0.9989 |
+| PR-AUC | 0.9998 | Primary metric - honest under class imbalance |
 | ROC-AUC | 1.0000 * | See caveat below |
-| Brier score | 0.000033 | vs. random-baseline ~0.0204; calibrated on a held-out slice, not the training rows |
+| Brier score | 0.000017 | vs. random-baseline ~0.0204; calibrated on a held-out slice, not the training rows |
 
 *PR-AUC and ROC-AUC of 1.0000 are a known property of PaySim once balance-discrepancy features are engineered — treat this as a documented dataset artifact, not evidence of real-world performance. See "Limitations and Risks" below.*
+
+### Walk-forward validation (Step 3, `src/validate.py`)
+
+The table above is one split. `src/validate.py` repeats train → calibrate → test across 4 expanding-window folds spanning the whole dataset, each fold picking its own cost-optimal threshold:
+
+| Metric | Mean (4 folds) | Std dev |
+|---|---|---|
+| PR-AUC | 0.9997 | ± 0.0004 |
+| ROC-AUC | 0.9999 | ± 0.0002 |
+| Precision | 0.9954 | ± 0.0065 |
+| Recall | 0.9995 | ± 0.0005 |
+| F1 | 0.9975 | ± 0.0035 |
+| Brier score | 0.0000 | ± 0.0000 |
+
+Low std dev across folds is real evidence this isn't a one-off lucky split. The genuine catch: the per-fold cost-optimal threshold ranges from 0.0078 to 0.9794 — no single fixed threshold is clearly correct across all folds, which is the honest limitation the near-perfect PR-AUC hides. See "Limitations and Risks" below.
 
 ---
 
 ## Limitations and Risks
 
 - **PaySim is a simulator.** Generalisation to real data is unverified and should be assumed poor without retraining.
-- **No drift detection.** In production, PSI monitoring on balance-discrepancy features is recommended.
-- **Threshold is static.** The 0.9989 threshold was calibrated for the PaySim holdout. Different fraud rates require a different operating point.
+- **Drift monitoring is simulated, not real.** `src/monitoring.py` shows what PSI monitoring would look like using PaySim's own time horizon as a stand-in for "time passing in production" — there's no real production traffic behind it yet.
+- **Threshold is static per fold.** Each walk-forward fold in `src/validate.py` picks its own cost-optimal threshold; the shipped model still uses one fixed threshold. Different fraud rates require a different operating point.
 - False positives freeze customer funds - high precision is a design requirement, not a vanity metric.
 
 ---
+
+## Monitoring
+
+`src/monitoring.py` simulates production drift monitoring using Population Stability Index (PSI), since there's no real production traffic to observe. It treats the earliest slice of the PaySim time horizon (steps 1-50) as the "training-time" reference distribution and tracks how far each engineered feature drifts from it in later 50-step windows. Standard PSI thresholds apply: <0.10 stable, 0.10–0.25 moderate shift (worth watching), >0.25 significant shift (investigate).
+
+**Real result, run against the full dataset:** 3 of the 4 engineered features show a significant shift at some point across the time horizon:
+
+| Feature | Worst PSI observed | Verdict |
+|---|---|---|
+| `dest_balance_discrepancy` | 1.4163 | Significant shift |
+| `orig_drain_ratio` | 0.7813 | Significant shift |
+| `dest_amount_ratio` | 0.2633 | Significant shift |
+| `orig_balance_discrepancy` | 0.1264 | Moderate shift |
+
+This is an honest, useful finding, not a bug to fix: PaySim's transaction volume and fraud mix genuinely change over its 744-step horizon, so a model trained only on the earliest data would need re-calibration (or re-training) as time moves on — exactly the scenario drift monitoring exists to catch. See the dashboard's Monitoring tab for the full timeline chart.
 
 ## How to Use
 

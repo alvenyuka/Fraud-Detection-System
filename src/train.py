@@ -1,11 +1,16 @@
 """
-train.py — Fraud Detection System training pipeline
+train.py — Step 1 of the model build-up: the baseline model.
 
-Trains an XGBoost classifier on PaySim mobile-money data with:
-  - Time-based train/test split at step 490
-  - Balance-discrepancy feature engineering
-  - Calibrated probability output
-  - Model serialised to model/xgb_fraud_model.pkl
+This is where the project starts: load PaySim data, engineer the
+balance-discrepancy features, train an XGBoost classifier, and calibrate its
+probabilities so a "0.9" score really does mean roughly a 90% chance of fraud.
+
+The rest of the build-up lives in separate scripts, each answering a
+question this baseline leaves open:
+  - src/tune.py     — were these hyperparameters ever tested against alternatives?
+  - src/validate.py — does this hold up on more than one train/test split?
+  - src/monitoring.py — how would we know if the model started drifting?
+  - dashboard/app.py  — how does someone without Python actually use this?
 
 Usage
 -----
@@ -16,6 +21,7 @@ Usage
 """
 
 import argparse
+import json
 import logging
 import sys
 from pathlib import Path
@@ -36,6 +42,9 @@ from sklearn.metrics import (
 from sklearn.model_selection import train_test_split
 from xgboost import XGBClassifier
 
+sys.path.insert(0, str(Path(__file__).parent))
+from features import FEATURE_COLS, engineer_features, load_and_filter  # noqa: E402
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)s  %(message)s",
@@ -43,62 +52,8 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Feature engineering
-# ---------------------------------------------------------------------------
-
-ACTIVE_TYPES = {"TRANSFER", "CASH_OUT"}
 SPLIT_STEP = 490  # ~66% of 744-step horizon
-
-
-def load_and_filter(path: str) -> pd.DataFrame:
-    """Load PaySim CSV and keep only fraud-active transaction types."""
-    log.info("Loading %s …", path)
-    df = pd.read_csv(path)
-    log.info("Loaded %d rows", len(df))
-    df = df[df["type"].isin(ACTIVE_TYPES)].copy()
-    log.info("After type filter: %d rows (%.1f%% kept)", len(df), 100 * len(df) / 6_362_620)
-    return df
-
-
-def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Add balance-discrepancy features that carry ~85% of predictive signal.
-
-    Accounting identity for a clean transaction:
-        newbalanceOrig  = oldbalanceOrg  - amount
-        newbalanceDest  = oldbalanceDest + amount
-
-    Any deviation flags a potential fraud.
-    """
-    df = df.copy()
-
-    df["orig_balance_discrepancy"] = (
-        df["oldbalanceOrg"] - df["amount"] - df["newbalanceOrig"]
-    )
-    df["dest_balance_discrepancy"] = (
-        df["oldbalanceDest"] + df["amount"] - df["newbalanceDest"]
-    )
-
-    # Ratio features (epsilon avoids div-by-zero)
-    eps = 1e-8
-    df["orig_drain_ratio"] = df["amount"] / (df["oldbalanceOrg"] + eps)
-    df["dest_amount_ratio"] = df["amount"] / (df["oldbalanceDest"] + eps)
-
-    return df
-
-
-FEATURE_COLS = [
-    "amount",
-    "oldbalanceOrg",
-    "newbalanceOrig",
-    "oldbalanceDest",
-    "newbalanceDest",
-    "orig_balance_discrepancy",
-    "dest_balance_discrepancy",
-    "orig_drain_ratio",
-    "dest_amount_ratio",
-]
+BEST_PARAMS_PATH = Path(__file__).parent.parent / "model" / "best_params.json"
 
 
 def time_based_split(df: pd.DataFrame, split_step: int = SPLIT_STEP):
@@ -117,7 +72,7 @@ def time_based_split(df: pd.DataFrame, split_step: int = SPLIT_STEP):
 # Model training
 # ---------------------------------------------------------------------------
 
-XGB_PARAMS = {
+DEFAULT_XGB_PARAMS = {
     "n_estimators": 500,
     "max_depth": 6,
     "learning_rate": 0.1,
@@ -133,7 +88,19 @@ XGB_PARAMS = {
 OPERATING_THRESHOLD = 0.9989
 
 
+def load_xgb_params() -> dict:
+    """Use tuned hyperparameters from src/tune.py if available, else the defaults."""
+    if BEST_PARAMS_PATH.exists():
+        tuned = json.loads(BEST_PARAMS_PATH.read_text())
+        params = {**DEFAULT_XGB_PARAMS, **tuned}
+        log.info("Using tuned hyperparameters from %s", BEST_PARAMS_PATH)
+        return params
+    log.info("No %s found — using default hyperparameters.", BEST_PARAMS_PATH.name)
+    return DEFAULT_XGB_PARAMS
+
+
 def train(data_path: str, model_out: str) -> None:
+    xgb_params = load_xgb_params()
     df = load_and_filter(data_path)
     df = engineer_features(df)
 
@@ -152,7 +119,7 @@ def train(data_path: str, model_out: str) -> None:
     X_test,  y_test  = test_df[FEATURE_COLS],  test_df["isFraud"]
 
     log.info("Fitting XGBClassifier on %d rows ...", len(X_fit))
-    xgb = XGBClassifier(**XGB_PARAMS)
+    xgb = XGBClassifier(**xgb_params)
     xgb.fit(X_fit, y_fit)
 
     log.info("Calibrating probabilities (isotonic) on %d held-out rows ...", len(X_calib))
