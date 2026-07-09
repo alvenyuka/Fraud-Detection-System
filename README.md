@@ -1,12 +1,12 @@
 # Fraud-Detection-System
 
-> Mobile-money fraud classifier on PaySim — XGBoost at 100% precision and 88.6% recall on a 132K time-based holdout, verified by running `src/train.py` end-to-end against the real dataset.
+> Mobile-money fraud classifier on PaySim — XGBoost at 100% precision and 89.5% recall on a 132K time-based holdout, validated across 4 walk-forward folds (PR-AUC 0.9997 ± 0.0004), with tuned hyperparameters, drift monitoring, and a live dashboard.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 [![XGBoost](https://img.shields.io/badge/XGBoost-2.0+-EB6E2D)](https://xgboost.readthedocs.io/)
-[![PR-AUC](https://img.shields.io/badge/PR--AUC-1.0000-success)](#results)
-[![Brier](https://img.shields.io/badge/Brier-0.000033-success)](#calibration)
+[![PR-AUC](https://img.shields.io/badge/PR--AUC-0.9998-success)](#results)
+[![Brier](https://img.shields.io/badge/Brier-0.000017-success)](#calibration)
 [![Made with Jupyter](https://img.shields.io/badge/Made%20with-Jupyter-orange?logo=Jupyter)](https://jupyter.org/)
 
 ![Project banner — fraud-detection system on PaySim mobile-money data](banner.svg)
@@ -75,8 +75,11 @@ make dashboard # launch the live dashboard locally
 
 ## Features
 
-- XGBoost calibrated to Brier score 0.000033 (vs. random baseline ~0.0204), calibrated on a held-out slice of the training period — not on the same rows the base model was fit on
-- 100% precision / 88.6% recall at operating threshold 0.9989
+- XGBoost calibrated to Brier score 0.000017 (vs. random baseline ~0.0204), calibrated on a held-out slice of the training period — not on the same rows the base model was fit on
+- 100% precision / 89.5% recall at operating threshold 0.9989, tuned hyperparameters (`src/tune.py`)
+- Walk-forward validated across 4 time-based folds, not just one split (`src/validate.py`)
+- Simulated drift monitoring via PSI (`src/monitoring.py`)
+- Live dashboard for scoring, performance review, batch scoring, and monitoring (`dashboard/app.py`)
 - Time-based train/test split at step 490 — no leakage
 - Balance-discrepancy feature engineering (~85% of predictive signal)
 - SHAP attribution (2,000-row representative sample; stable across seeds)
