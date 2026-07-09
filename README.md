@@ -17,15 +17,35 @@ Mobile-money fraud is a precision problem, not an accuracy problem. The PaySim d
 
 > **A note on PaySim.** PaySim is widely used in introductory fraud-detection tutorials. The contribution here is not the dataset choice but the evaluation rigour: strict time-based split, calibrated probabilities, cost-sensitive threshold selection, and a five-model comparison on identical feature pipelines.
 
+## How this was built
+
+This project was built up in stages, each one answering a question the previous stage left open — the same way you'd work through it as a learning exercise, not all at once:
+
+| Step | File | Question it answers |
+|---|---|---|
+| 1. Baseline model | [`src/train.py`](src/train.py) | Can a model tell fraud apart from legitimate transactions at all? |
+| 2. Hyperparameter tuning | [`src/tune.py`](src/tune.py) | Were the model's settings ever actually tested against alternatives? |
+| 3. Walk-forward validation | [`src/validate.py`](src/validate.py) | Does it hold up on more than one train/test split? |
+| 4. Drift monitoring | [`src/monitoring.py`](src/monitoring.py) | How would we know if the model started drifting in production? |
+| 5. Live dashboard | [`dashboard/app.py`](dashboard/app.py) | How does someone without Python actually use this? |
+
 ## Project Structure
 
 ```
 Fraud-Detection-System/
 ├── src/
-│   ├── train.py          # Training pipeline — data -> model serialisation
-│   └── predict.py        # Inference script — load model, score transactions
+│   ├── features.py       # Shared feature engineering (used by every script below)
+│   ├── train.py           # Step 1 — baseline model
+│   ├── tune.py             # Step 2 — hyperparameter search
+│   ├── validate.py         # Step 3 — walk-forward validation
+│   ├── monitoring.py       # Step 4 — drift monitoring
+│   └── predict.py          # Command-line scoring
+├── dashboard/
+│   ├── app.py             # Step 5 — live Streamlit dashboard
+│   └── data/               # Small precomputed results the dashboard reads
 ├── model/
-│   └── xgb_fraud_model.pkl   # Serialised trained model (run make train)
+│   ├── xgb_fraud_model.pkl   # Trained model (run make train)
+│   └── best_params.json      # Tuned hyperparameters (run make tune)
 ├── Fraud Detection System.ipynb
 ├── requirements.txt
 ├── Makefile
@@ -45,6 +65,12 @@ pip install -r requirements.txt
 
 make train DATA=PS_20174392719_1491204439457_log.csv
 make predict
+
+# Optional — the rest of the build-up (see "How this was built" above)
+make tune      # search hyperparameters, then re-run `make train` to use them
+make validate  # walk-forward validation across 4 time-based folds
+make monitor   # simulated drift monitoring
+make dashboard # launch the live dashboard locally
 ```
 
 ## Features
@@ -118,14 +144,33 @@ make predict-csv INPUT=txns.csv OUTPUT=out.csv
 | Metric | Value |
 |---|---|
 | Precision | **100.00%** |
-| Recall | **88.63%** |
-| F1 | 0.9397 |
-| PR-AUC | 1.0000 |
+| Recall | **89.47%** |
+| F1 | 0.9444 |
+| PR-AUC | 0.9998 |
 | ROC-AUC | 1.0000 * |
-| Brier score | 0.000033 |
+| Brier score | 0.000017 |
 | Operating threshold | 0.9989 |
 
-*PR-AUC and ROC-AUC of 1.0000 are a documented PaySim property once balance-discrepancy features are engineered — the accounting-identity violation is nearly deterministic for fraud in this simulator, which is a property of the synthetic data generation, not evidence this would generalise to real transaction data (see [Limitations](#limitations-and-risks) in the model card). At the fixed 0.9989 threshold, precision reaches 100% but recall (88.6%) is 8 points below what the exploratory notebook comparison below reports — the two use different feature sets and aren't directly comparable; this table is the one that reflects what actually ships.*
+*(Retrained with tuned hyperparameters from `src/tune.py` — Step 2 of the build-up. Recall moved from 88.63% to 89.47%: a modest, honest gain, not a dramatic one — see the walk-forward validation below for why there wasn't much room to improve.)*
+
+*PR-AUC and ROC-AUC of 1.0000 are a documented PaySim property once balance-discrepancy features are engineered — the accounting-identity violation is nearly deterministic for fraud in this simulator, which is a property of the synthetic data generation, not evidence this would generalise to real transaction data (see [Limitations](#limitations-and-risks) in the model card).*
+
+### Walk-forward validation — does it hold up on more than one split?
+
+The single-split numbers above only prove the model worked once. `src/validate.py` (Step 3 of the build-up) repeats the same train → calibrate → test recipe on 4 expanding-window folds spanning the entire dataset (steps 350→450, 450→550, 550→650, 650→743), each picking its own cost-optimal threshold:
+
+| Metric | Mean across 4 folds | Std dev |
+|---|---|---|
+| PR-AUC | 0.9997 | ± 0.0004 |
+| ROC-AUC | 0.9999 | ± 0.0002 |
+| Precision | 0.9954 | ± 0.0065 |
+| Recall | 0.9995 | ± 0.0005 |
+| F1 | 0.9975 | ± 0.0035 |
+| Brier score | 0.0000 | ± 0.0000 |
+
+The low std dev across folds is real evidence the model isn't a one-off lucky split — performance stays consistently near-ceiling across the whole time horizon, which is consistent with PaySim's fraud signal being near-deterministic once these features are engineered (see caveat above).
+
+**One honest catch:** the cost-optimal decision threshold swings a lot fold to fold — 0.0475, 0.9794, 0.0078, 0.8333. That's the real limitation the near-perfect PR-AUC hides: this dataset's fraud rate and cost trade-off shift enough between windows that no single fixed threshold is clearly "correct" for all of them. The shipped model still uses one static threshold (see `MODEL_CARD.md` → Limitations) — a real deployment would need to revisit it periodically, not assume it's set once and forever.
 
 ### Exploratory model comparison (from the notebook, not the shipped pipeline)
 
@@ -153,8 +198,11 @@ SHAP values on a 2,000-row stratified sample (stable across seeds):
 - [x] Inference script (`src/predict.py`)
 - [x] Training pipeline (`src/train.py`)
 - [x] Model card (`MODEL_CARD.md`)
+- [x] Hyperparameter tuning (`src/tune.py`)
+- [x] Walk-forward validation across multiple time splits (`src/validate.py`)
+- [x] Drift monitoring (PSI on balance-discrepancy features, `src/monitoring.py`)
+- [x] Live dashboard (`dashboard/app.py`)
 - [ ] Streaming inference (Kafka + FastAPI)
-- [ ] Drift monitoring (PSI on balance-discrepancy features)
 
 ## License
 

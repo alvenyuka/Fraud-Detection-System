@@ -1,7 +1,10 @@
 """
-predict.py — Fraud Detection System inference script
+predict.py — the command-line way to use the model train.py produces.
 
-Loads the serialised XGBoost model and scores one or more transactions.
+Loads the saved model and scores one or more transactions. This is the
+plain-Python entry point; dashboard/app.py (Step 5 of the build-up) wraps
+this same scoring logic in a web page for people who don't want to use the
+command line.
 
 Usage — score a single transaction (interactive)
 -------------------------------------------------
@@ -29,37 +32,8 @@ import joblib
 import numpy as np
 import pandas as pd
 
-# ---------------------------------------------------------------------------
-# Constants (must match train.py)
-# ---------------------------------------------------------------------------
-
-ACTIVE_TYPES = {"TRANSFER", "CASH_OUT"}
-
-FEATURE_COLS = [
-    "amount",
-    "oldbalanceOrg",
-    "newbalanceOrig",
-    "oldbalanceDest",
-    "newbalanceDest",
-    "orig_balance_discrepancy",
-    "dest_balance_discrepancy",
-    "orig_drain_ratio",
-    "dest_amount_ratio",
-]
-
-# ---------------------------------------------------------------------------
-# Feature engineering (must match train.py exactly)
-# ---------------------------------------------------------------------------
-
-def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    eps = 1e-8
-    df["orig_balance_discrepancy"] = df["oldbalanceOrg"] - df["amount"] - df["newbalanceOrig"]
-    df["dest_balance_discrepancy"] = df["oldbalanceDest"] + df["amount"] - df["newbalanceDest"]
-    df["orig_drain_ratio"] = df["amount"] / (df["oldbalanceOrg"] + eps)
-    df["dest_amount_ratio"] = df["amount"] / (df["oldbalanceDest"] + eps)
-    return df
-
+sys.path.insert(0, str(Path(__file__).parent))
+from features import ACTIVE_TYPES, FEATURE_COLS, engineer_features  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Model loader
