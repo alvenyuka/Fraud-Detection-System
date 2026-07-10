@@ -11,6 +11,10 @@
 
 ![Project banner — fraud-detection system on PaySim mobile-money data](banner.svg)
 
+## 🔴 Live Dashboard
+
+**[fraud-detection-system-kmeuq7hku8tglnxdpmalfk.streamlit.app](https://fraud-detection-system-kmeuq7hku8tglnxdpmalfk.streamlit.app/)** — score a transaction live with a SHAP explanation, review the walk-forward validation results, batch-score a CSV, or inspect the drift-monitoring timeline. See "How this was built" below for what each tab is backed by.
+
 ## Why?
 
 Mobile-money fraud is a precision problem, not an accuracy problem. The PaySim dataset has a 0.13% positive rate; a model that says "not fraud" every time scores 99.87% accuracy and catches zero fraud. Production fraud-ops workflows freeze customer funds on a flag, so false positives carry direct trust and regulatory cost. This repo builds a classifier honest about that trade-off: precision is held at or above 99% and the model is evaluated on a strict time-based holdout — no future-state leakage.
@@ -42,6 +46,7 @@ Fraud-Detection-System/
 │   └── predict.py          # Command-line scoring
 ├── dashboard/
 │   ├── app.py             # Step 5 — live Streamlit dashboard
+│   ├── requirements.txt   # Lean dependency set for Streamlit Cloud deployment
 │   └── data/               # Small precomputed results the dashboard reads
 ├── model/
 │   ├── xgb_fraud_model.pkl   # Trained model (run make train)
