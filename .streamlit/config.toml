@@ -1,0 +1,14 @@
+# Streamlit theme for the live dashboard.
+#
+# The default Streamlit theme is a flat dark grey with no real design behind
+# it. This is a proper light theme: a clean off-white surface with one
+# accent color (blue) used consistently, matching the same palette the
+# charts in dashboard/app.py are built from.
+
+[theme]
+base = "light"
+primaryColor = "#2a78d6"
+backgroundColor = "#fcfcfb"
+secondaryBackgroundColor = "#f0f4fa"
+textColor = "#0b0b0b"
+font = "sans serif"

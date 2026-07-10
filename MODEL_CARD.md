@@ -73,12 +73,56 @@ Flagging fraudulent `TRANSFER` and `CASH_OUT` transactions in mobile-money syste
 
 | Feature | Formula | Rationale |
 |---|---|---|
+| `amount` | raw | Transaction size |
 | `orig_balance_discrepancy` | `oldbalanceOrg - amount - newbalanceOrig` | Should be ~0 for clean transactions |
 | `dest_balance_discrepancy` | `oldbalanceDest + amount - newbalanceDest` | Should be ~0 for clean transactions |
 | `orig_drain_ratio` | `amount / (oldbalanceOrg + eps)` | Proportion of origin balance drained |
 | `dest_amount_ratio` | `amount / (oldbalanceDest + eps)` | Amount relative to destination balance |
 
-SHAP attribution confirms these four features plus raw balance fields account for ~85% of the model's predictions.
+### Why the raw balance columns (`oldbalanceOrg`, `newbalanceOrig`, `oldbalanceDest`, `newbalanceDest`) are *not* model inputs
+
+An earlier version of this model fed the raw balance columns into the model
+alongside the engineered features above. Manual testing of the live dashboard
+found this let the model take a shortcut: PaySim's simulated fraud almost
+always drains the sender's account to exactly zero, so the model learned
+"the sender's balance hits zero" as a fraud signal **on its own** — even for
+a transaction with a perfectly consistent, zero-discrepancy destination
+update. Concretely, a $12 transaction that fully (and correctly) empties a
+$12 account scored **100% fraud probability** despite `orig_balance_discrepancy`
+and `dest_balance_discrepancy` both being exactly 0 — closing an account or
+moving your whole balance somewhere else is completely normal, non-fraudulent
+behaviour, but the old model called it certain fraud every time.
+
+The raw balance columns were removed from `FEATURE_COLS`, leaving only
+`amount` and the four engineered features above. The model can no longer see
+"the balance hit zero" directly — only whether the accounting identity
+actually broke — which is the real fraud signal PaySim's discrepancy pattern
+is meant to capture.
+
+**This turned out to be a partial fix, not a full one — and re-testing after
+the fix caught that.** `orig_drain_ratio` (`amount / oldbalanceOrg`) still
+encodes "was the account fully drained" even without the raw balance columns:
+a ratio of 1.0 means 100% of the balance moved. Re-running the same test
+transaction at different drain fractions makes the remaining effect exact:
+
+| Drain fraction | Fraud probability |
+|---|---|
+| 10% – 99% | 0.006% (flat) |
+| **100%** | **95.3%** |
+
+The probability is flat and near-zero for every fraction up to 99%, then
+jumps sharply at exactly 100%. That step function — not a smooth
+relationship with how much of the balance moved — is strong evidence that
+PaySim's fraud-generation process creates fraud at (almost) exactly 100%
+drain, and its legitimate transactions essentially never land on exactly
+100%. That is a property of how this simulator generates its labels, not a
+bug fixable by dropping more columns — the same correlation would resurface
+through `orig_drain_ratio` no matter which raw columns are excluded, because
+in this dataset "100% drained" and "fraudulent" really are almost the same
+set of rows. A model trained on real transaction data, where legitimate
+full-balance transfers and account closures actually occur, would need to be
+retrained on that real distribution before this behaviour could be expected
+to change.
 
 ---
 
@@ -103,14 +147,14 @@ The table above is one split. `src/validate.py` repeats train → calibrate → 
 
 | Metric | Mean (4 folds) | Std dev |
 |---|---|---|
-| PR-AUC | 0.9997 | ± 0.0004 |
+| PR-AUC | 0.9986 | ± 0.0013 |
 | ROC-AUC | 0.9999 | ± 0.0002 |
-| Precision | 0.9954 | ± 0.0065 |
-| Recall | 0.9995 | ± 0.0005 |
-| F1 | 0.9975 | ± 0.0035 |
-| Brier score | 0.0000 | ± 0.0000 |
+| Precision | 0.9561 | ± 0.0490 |
+| Recall | 0.9998 | ± 0.0004 |
+| F1 | 0.9768 | ± 0.0262 |
+| Brier score | 0.0002 | ± 0.0001 |
 
-Low std dev across folds is real evidence this isn't a one-off lucky split. The genuine catch: the per-fold cost-optimal threshold ranges from 0.0078 to 0.9794 — no single fixed threshold is clearly correct across all folds, which is the honest limitation the near-perfect PR-AUC hides. See "Limitations and Risks" below.
+These are the corrected model's numbers, after removing the raw balance columns (see § Feature Engineering above). Precision dropped from 0.9954 and its fold variance grew after the fix — the honest cost of no longer letting the model key off "balance hits zero" as a shortcut; recall improved slightly. Low std dev across folds is still real evidence this isn't a one-off lucky split. The genuine remaining catch: the per-fold cost-optimal threshold still varies a lot across folds — no single fixed threshold is clearly correct across all of them, which is the honest limitation the near-perfect PR-AUC hides. See "Limitations and Risks" below.
 
 ---
 

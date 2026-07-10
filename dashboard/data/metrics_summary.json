@@ -7,13 +7,13 @@
       "n_train": 2160953,
       "n_test": 465202,
       "fraud_rate_test_pct": 0.2485,
-      "threshold": 0.0475,
-      "PR-AUC": 0.9997,
+      "threshold": 0.0076,
+      "PR-AUC": 0.9964,
       "ROC-AUC": 1.0,
-      "Precision": 0.9974,
-      "Recall": 0.9991,
-      "F1": 0.9983,
-      "Brier": 1.2e-05
+      "Precision": 0.8731,
+      "Recall": 1.0,
+      "F1": 0.9323,
+      "Brier": 6.4e-05
     },
     {
       "train_end_step": 450,
@@ -21,13 +21,13 @@
       "n_train": 2626155,
       "n_test": 62033,
       "fraud_rate_test_pct": 1.6249,
-      "threshold": 0.9794,
-      "PR-AUC": 1.0,
+      "threshold": 0.125,
+      "PR-AUC": 0.9998,
       "ROC-AUC": 1.0,
-      "Precision": 1.0,
+      "Precision": 0.999,
       "Recall": 1.0,
-      "F1": 1.0,
-      "Brier": 1e-06
+      "F1": 0.9995,
+      "Brier": 7.3e-05
     },
     {
       "train_end_step": 550,
@@ -35,13 +35,13 @@
       "n_train": 2688188,
       "n_test": 47936,
       "fraud_rate_test_pct": 2.349,
-      "threshold": 0.0078,
-      "PR-AUC": 0.9991,
-      "ROC-AUC": 0.9996,
-      "Precision": 0.9843,
+      "threshold": 0.0054,
+      "PR-AUC": 0.9987,
+      "ROC-AUC": 0.9995,
+      "Precision": 0.9707,
       "Recall": 0.9991,
-      "F1": 0.9916,
-      "Brier": 6.2e-05
+      "F1": 0.9847,
+      "Brier": 0.000261
     },
     {
       "train_end_step": 650,
@@ -49,37 +49,37 @@
       "n_train": 2736124,
       "n_test": 34285,
       "fraud_rate_test_pct": 2.9809,
-      "threshold": 0.8333,
-      "PR-AUC": 1.0,
+      "threshold": 0.0275,
+      "PR-AUC": 0.9996,
       "ROC-AUC": 1.0,
-      "Precision": 1.0,
+      "Precision": 0.9817,
       "Recall": 1.0,
-      "F1": 1.0,
-      "Brier": 2e-06
+      "F1": 0.9908,
+      "Brier": 0.000298
     }
   ],
   "PR-AUC": {
-    "mean": 0.9997,
-    "std": 0.0004
+    "mean": 0.9986,
+    "std": 0.0013
   },
   "ROC-AUC": {
     "mean": 0.9999,
     "std": 0.0002
   },
   "Precision": {
-    "mean": 0.9954,
-    "std": 0.0065
+    "mean": 0.9561,
+    "std": 0.049
   },
   "Recall": {
-    "mean": 0.9995,
-    "std": 0.0005
+    "mean": 0.9998,
+    "std": 0.0004
   },
   "F1": {
-    "mean": 0.9975,
-    "std": 0.0035
+    "mean": 0.9768,
+    "std": 0.0262
   },
   "Brier": {
-    "mean": 0.0,
-    "std": 0.0
+    "mean": 0.0002,
+    "std": 0.0001
   }
 }
