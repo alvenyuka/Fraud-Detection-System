@@ -32,6 +32,11 @@ This project was built up in stages, each one answering a question the previous 
 | 3. Walk-forward validation | [`src/validate.py`](src/validate.py) | Does it hold up on more than one train/test split? |
 | 4. Drift monitoring | [`src/monitoring.py`](src/monitoring.py) | How would we know if the model started drifting in production? |
 | 5. Live dashboard | [`dashboard/app.py`](dashboard/app.py) | How does someone without Python actually use this? |
+| 6. Feature fix | [`src/features.py`](src/features.py) | Live-testing the dashboard found the model flagging legitimate account closures as 100% fraud — why, and how it was fixed |
+
+**Step 6 in detail:** the model used to take the raw balance columns (`oldbalanceOrg`, `newbalanceOrig`, etc.) as direct inputs alongside the engineered discrepancy features. Because PaySim's simulated fraud almost always drains the sender's account to exactly zero, the model learned "balance hits zero" as a fraud signal on its own — a $12 transaction that fully and correctly emptied a $12 account scored 100% fraud probability, even with zero actual accounting discrepancy. The raw balance columns were removed from the model's inputs (see `MODEL_CARD.md` § Feature Engineering).
+
+**That turned out to be a partial fix — re-testing after applying it caught the rest.** `orig_drain_ratio` (`amount / oldbalanceOrg`) still encodes "was the account fully drained" without needing the raw columns: a 100%-drained, fully consistent transaction still scores 95.3%, while the exact same transaction at any drain fraction from 10-99% scores a flat 0.006%. That step-function jump at exactly 100% is PaySim's fraud-generation process showing through the data, not a bug in the feature list — see `MODEL_CARD.md` § Feature Engineering for the full breakdown and why fixing it further would mean retraining on real transaction data, not removing more columns.
 
 ## Project Structure
 
@@ -169,16 +174,18 @@ The single-split numbers above only prove the model worked once. `src/validate.p
 
 | Metric | Mean across 4 folds | Std dev |
 |---|---|---|
-| PR-AUC | 0.9997 | ± 0.0004 |
+| PR-AUC | 0.9986 | ± 0.0013 |
 | ROC-AUC | 0.9999 | ± 0.0002 |
-| Precision | 0.9954 | ± 0.0065 |
-| Recall | 0.9995 | ± 0.0005 |
-| F1 | 0.9975 | ± 0.0035 |
-| Brier score | 0.0000 | ± 0.0000 |
+| Precision | 0.9561 | ± 0.0490 |
+| Recall | 0.9998 | ± 0.0004 |
+| F1 | 0.9768 | ± 0.0262 |
+| Brier score | 0.0002 | ± 0.0001 |
 
 The low std dev across folds is real evidence the model isn't a one-off lucky split — performance stays consistently near-ceiling across the whole time horizon, which is consistent with PaySim's fraud signal being near-deterministic once these features are engineered (see caveat above).
 
-**One honest catch:** the cost-optimal decision threshold swings a lot fold to fold — 0.0475, 0.9794, 0.0078, 0.8333. That's the real limitation the near-perfect PR-AUC hides: this dataset's fraud rate and cost trade-off shift enough between windows that no single fixed threshold is clearly "correct" for all of them. The shipped model still uses one static threshold (see `MODEL_CARD.md` → Limitations) — a real deployment would need to revisit it periodically, not assume it's set once and forever.
+*(These numbers are from the corrected model — see "How this was built" § Step 6 above. Precision dropped from 0.9954 to 0.9561 and its fold-to-fold variance grew (± 0.0490) after removing the raw balance columns that used to let the model take a shortcut; recall actually improved slightly. This is the honest cost of no longer letting the model key off "balance hits zero" — a small, real trade-off for a model that no longer calls legitimate account closures certain fraud.)*
+
+**One honest catch:** the cost-optimal decision threshold still swings a lot fold to fold. That's a real limitation the near-perfect PR-AUC hides: this dataset's fraud rate and cost trade-off shift enough between windows that no single fixed threshold is clearly "correct" for all of them. The shipped model still uses one static threshold (see `MODEL_CARD.md` → Limitations) — a real deployment would need to revisit it periodically, not assume it's set once and forever.
 
 ### Exploratory model comparison (from the notebook, not the shipped pipeline)
 

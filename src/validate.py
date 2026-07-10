@@ -49,7 +49,7 @@ from sklearn.model_selection import train_test_split
 from xgboost import XGBClassifier
 
 sys.path.insert(0, str(Path(__file__).parent))
-from features import FEATURE_COLS, engineer_features, load_and_filter  # noqa: E402
+from features import FEATURE_COLS, engineer_features, load_and_filter, pick_best_threshold  # noqa: E402
 from train import load_xgb_params  # noqa: E402
 
 logging.basicConfig(
@@ -66,34 +66,7 @@ FOLDS = [
     (650, 743),
 ]
 
-# Same cost framework the original project used: a missed fraud (false
-# negative) costs far more than a false alarm (false positive).
-COST_PER_MISSED_FRAUD = 1000
-COST_PER_FALSE_ALARM = 10
-
 DASHBOARD_DATA_DIR = Path(__file__).parent.parent / "dashboard" / "data"
-
-
-def pick_best_threshold(y_true: np.ndarray, predicted_probs: np.ndarray) -> float:
-    """
-    Try every possible cutoff and keep the one with the lowest total cost.
-
-    A low threshold catches more fraud but raises more false alarms; a high
-    threshold does the opposite. This picks the balance point using the
-    $1000 (missed fraud) vs $10 (false alarm) costs above.
-    """
-    candidate_thresholds = np.unique(np.concatenate([predicted_probs, [0.0, 1.0]]))
-    best_threshold, lowest_cost = 0.5, np.inf
-
-    for threshold in candidate_thresholds:
-        predicted_fraud = (predicted_probs >= threshold).astype(int)
-        missed_fraud_count = int(((predicted_fraud == 0) & (y_true == 1)).sum())
-        false_alarm_count = int(((predicted_fraud == 1) & (y_true == 0)).sum())
-        total_cost = COST_PER_MISSED_FRAUD * missed_fraud_count + COST_PER_FALSE_ALARM * false_alarm_count
-        if total_cost < lowest_cost:
-            lowest_cost, best_threshold = total_cost, threshold
-
-    return float(best_threshold)
 
 
 def run_one_fold(df: pd.DataFrame, train_end_step: int, test_end_step: int, xgb_params: dict) -> dict:

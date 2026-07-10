@@ -36,6 +36,37 @@ MODEL_PATH = ROOT / "model" / "xgb_fraud_model.pkl"
 
 st.set_page_config(page_title="Fraud Detection System", page_icon="🕵️", layout="wide")
 
+# ---------------------------------------------------------------------------
+# Colors — one small palette, used everywhere, instead of Plotly's defaults.
+# ---------------------------------------------------------------------------
+
+COLOR_SURFACE = "#fcfcfb"
+COLOR_GRID = "#e1e0d9"
+COLOR_TEXT = "#0b0b0b"
+COLOR_MUTED = "#898781"
+COLOR_BLUE = "#2a78d6"      # the one accent color, used for single-series charts
+COLOR_GOOD = "#0ca30c"      # a prediction pushed toward "legitimate"
+COLOR_CRITICAL = "#d03b3b"  # a prediction pushed toward "fraud"
+# Fixed-order categorical colors for charts with more than one series
+# (e.g. one line per feature) — never reassigned when the series list changes.
+CATEGORICAL_COLORS = ["#2a78d6", "#1baf7a", "#eda100", "#008300", "#4a3aa7", "#e34948"]
+
+
+def style_chart(figure: go.Figure, title: str, xaxis_title: str = "", yaxis_title: str = "") -> go.Figure:
+    """Apply the same light, clean look to every chart on the page."""
+    figure.update_layout(
+        title=title,
+        xaxis_title=xaxis_title,
+        yaxis_title=yaxis_title,
+        plot_bgcolor=COLOR_SURFACE,
+        paper_bgcolor=COLOR_SURFACE,
+        font=dict(color=COLOR_TEXT),
+        margin=dict(t=48, l=10, r=10, b=10),
+    )
+    figure.update_xaxes(gridcolor=COLOR_GRID, zerolinecolor=COLOR_GRID)
+    figure.update_yaxes(gridcolor=COLOR_GRID, zerolinecolor=COLOR_GRID)
+    return figure
+
 
 # ---------------------------------------------------------------------------
 # Loading the model and its saved results (done once, then cached by Streamlit)
@@ -114,16 +145,21 @@ with st.sidebar:
 Trained on the [PaySim](https://www.kaggle.com/datasets/ealaxi/paysim1) simulator
 (6.36M transactions). Only `TRANSFER` and `CASH_OUT` types carry fraud in this
 dataset — other transaction types are passed through unscored.
-
-**Known limitations** (see `MODEL_CARD.md` for the full list):
-- PaySim is a *simulator* — how well this generalises to real transaction
-  data is unverified.
-- The balance-discrepancy features make fraud detection unusually easy in
-  this specific dataset. Treat the headline scores as a property of PaySim,
-  not a guarantee for real-world data.
-- The decision threshold below was chosen for PaySim's fraud rate — a real
-  deployment would need its own threshold, tuned for its own fraud rate.
         """
+    )
+    st.info(
+        "**Known limitations** (see `MODEL_CARD.md` for the full list):\n\n"
+        "- PaySim is a *simulator* — how well this generalises to real transaction "
+        "data is unverified.\n"
+        "- **A transaction that drains 100% of the sender's balance scores high "
+        "fraud probability almost by itself** — even when perfectly consistent. "
+        "PaySim's simulated fraud is (almost) always a full drain, and its "
+        "legitimate transactions almost never are, so the model picked up that "
+        "correlation. A real account closure or full transfer would trigger this "
+        "in the demo below — that's a property of this training data, not a bug.\n"
+        "- The decision threshold below was chosen for PaySim's fraud rate — a real "
+        "deployment would need its own threshold, tuned for its own fraud rate.",
+        icon="ℹ️",
     )
     st.metric("Decision threshold", f"{OPERATING_THRESHOLD:.4f}")
 
@@ -169,19 +205,40 @@ with tab_score:
 
         result_col1, result_col2 = st.columns(2)
         result_col1.metric("Fraud probability", f"{fraud_probability:.4%}")
-        result_col2.metric("Decision", "🚩 Flagged as fraud" if is_flagged else "✅ Looks legitimate")
+        with result_col2:
+            if is_flagged:
+                st.error("🚩 Flagged as fraud", icon="🚩")
+            else:
+                st.success("✅ Looks legitimate", icon="✅")
+
+        # A full balance drain scores high almost by itself in this model (see
+        # the sidebar) — flag that explicitly so the reason is clear rather
+        # than looking like a random misfire.
+        drain_ratio = transaction_with_features["orig_drain_ratio"].iloc[0]
+        if is_flagged and drain_ratio >= 0.999:
+            st.warning(
+                "This transaction drains ~100% of the sender's balance, which scores high "
+                "in this model almost regardless of anything else — see the sidebar's "
+                "known limitations.",
+                icon="⚠️",
+            )
 
         # Step 4 — explain the decision with SHAP: which features pushed the score up or down.
         st.markdown("**Why this score — feature-by-feature breakdown:**")
         shap_result = shap_explainer(model_inputs)
+        contributions = shap_result.values[0]
         waterfall_figure = go.Figure(go.Waterfall(
             orientation="h",
             y=FEATURE_COLS,
-            x=shap_result.values[0],
+            x=contributions,
             base=shap_result.base_values[0],
+            increasing=dict(marker=dict(color=COLOR_CRITICAL)),   # pushes toward fraud
+            decreasing=dict(marker=dict(color=COLOR_GOOD)),        # pushes toward legitimate
+            connector=dict(line=dict(color=COLOR_GRID)),
         ))
-        waterfall_figure.update_layout(title="Each feature's contribution to the score", height=400)
-        st.plotly_chart(waterfall_figure, use_container_width=True)
+        style_chart(waterfall_figure, "Each feature's contribution to the score")
+        waterfall_figure.update_layout(height=350)
+        st.plotly_chart(waterfall_figure, width="stretch")
 
 # ---------------------------------------------------------------------------
 # Tab 2 — Model Performance
@@ -202,7 +259,7 @@ with tab_performance:
             column.metric(metric_name, f"{metric_stats['mean']:.4f}", f"± {metric_stats['std']:.4f}")
 
         st.markdown("**Results per fold:**")
-        st.dataframe(pd.DataFrame(summary["folds"]), use_container_width=True)
+        st.dataframe(pd.DataFrame(summary["folds"]), width="stretch")
     else:
         st.info("Run `make validate` first to generate these results.")
 
@@ -210,26 +267,37 @@ with tab_performance:
     with chart_col1:
         if "pr_curve" in saved_results:
             pr_curve = saved_results["pr_curve"]
-            figure = go.Figure(go.Scatter(x=pr_curve["recall"], y=pr_curve["precision"], mode="lines"))
-            figure.update_layout(title="Precision-Recall curve (most recent fold)", xaxis_title="Recall", yaxis_title="Precision")
-            st.plotly_chart(figure, use_container_width=True)
+            figure = go.Figure(go.Scatter(
+                x=pr_curve["recall"], y=pr_curve["precision"], mode="lines",
+                line=dict(color=COLOR_BLUE, width=2),
+            ))
+            style_chart(figure, "Precision-Recall curve (most recent fold)", "Recall", "Precision")
+            st.plotly_chart(figure, width="stretch")
     with chart_col2:
         if "calibration_curve" in saved_results:
             calibration = saved_results["calibration_curve"]
             figure = go.Figure()
-            figure.add_trace(go.Scatter(x=calibration["mean_predicted"], y=calibration["fraction_positive"], mode="lines+markers", name="Model"))
-            figure.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode="lines", name="Perfectly calibrated", line=dict(dash="dash")))
-            figure.update_layout(title="Calibration curve (most recent fold)", xaxis_title="Predicted probability", yaxis_title="Actual fraud rate")
-            st.plotly_chart(figure, use_container_width=True)
+            figure.add_trace(go.Scatter(
+                x=calibration["mean_predicted"], y=calibration["fraction_positive"],
+                mode="lines+markers", name="Model", line=dict(color=COLOR_BLUE, width=2),
+            ))
+            figure.add_trace(go.Scatter(
+                x=[0, 1], y=[0, 1], mode="lines", name="Perfectly calibrated",
+                line=dict(dash="dash", color=COLOR_MUTED),
+            ))
+            style_chart(figure, "Calibration curve (most recent fold)", "Predicted probability", "Actual fraud rate")
+            st.plotly_chart(figure, width="stretch")
 
     if "confusion_matrix" in saved_results:
         cm = saved_results["confusion_matrix"]
         figure = go.Figure(go.Heatmap(
             z=cm["matrix"], x=cm["labels"], y=cm["labels"],
-            text=cm["matrix"], texttemplate="%{text}", colorscale="Blues",
+            text=cm["matrix"], texttemplate="%{text}",
+            colorscale=[[0, COLOR_SURFACE], [1, COLOR_BLUE]],
+            showscale=False,
         ))
-        figure.update_layout(title="Confusion matrix (most recent fold)", xaxis_title="Predicted", yaxis_title="Actual")
-        st.plotly_chart(figure, use_container_width=True)
+        style_chart(figure, "Confusion matrix (most recent fold)", "Predicted", "Actual")
+        st.plotly_chart(figure, width="stretch")
 
 # ---------------------------------------------------------------------------
 # Tab 3 — Batch Scoring
@@ -247,7 +315,7 @@ with tab_batch:
 
         n_flagged = int(scored_transactions["fraud_flag"].sum())
         st.success(f"Scored {len(scored_transactions):,} transactions — {n_flagged:,} flagged ({100 * n_flagged / len(scored_transactions):.2f}%)")
-        st.dataframe(scored_transactions, use_container_width=True)
+        st.dataframe(scored_transactions, width="stretch")
         st.download_button(
             "Download scored CSV",
             scored_transactions.to_csv(index=False).encode("utf-8"),
@@ -268,12 +336,20 @@ with tab_monitoring:
     if "psi_timeline" in saved_results:
         psi_timeline = saved_results["psi_timeline"]
         figure = go.Figure()
-        for feature_name in psi_timeline["feature"].unique():
+        # Fixed color order per feature, so a feature keeps its color no
+        # matter which others are present (see the dataviz "color follows
+        # the entity" rule).
+        for i, feature_name in enumerate(sorted(psi_timeline["feature"].unique())):
             feature_data = psi_timeline[psi_timeline["feature"] == feature_name]
-            figure.add_trace(go.Scatter(x=feature_data["window_start_step"], y=feature_data["psi"], mode="lines+markers", name=feature_name))
-        figure.add_hline(y=0.1, line_dash="dot", annotation_text="moderate shift (0.10)", line_color="orange")
-        figure.add_hline(y=0.25, line_dash="dot", annotation_text="significant shift (0.25)", line_color="red")
-        figure.update_layout(title="Drift (PSI) over time, by feature", xaxis_title="Time step (window start)", yaxis_title="PSI")
-        st.plotly_chart(figure, use_container_width=True)
+            color = CATEGORICAL_COLORS[i % len(CATEGORICAL_COLORS)]
+            figure.add_trace(go.Scatter(
+                x=feature_data["window_start_step"], y=feature_data["psi"],
+                mode="lines+markers", name=feature_name,
+                line=dict(color=color, width=2), marker=dict(size=6),
+            ))
+        figure.add_hline(y=0.1, line_dash="dot", annotation_text="moderate shift (0.10)", line_color="#eda100")
+        figure.add_hline(y=0.25, line_dash="dot", annotation_text="significant shift (0.25)", line_color=COLOR_CRITICAL)
+        style_chart(figure, "Drift (PSI) over time, by feature", "Time step (window start)", "PSI")
+        st.plotly_chart(figure, width="stretch")
     else:
         st.info("Run `make monitor` first to generate the drift timeline.")

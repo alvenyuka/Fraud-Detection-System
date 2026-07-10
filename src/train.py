@@ -43,7 +43,7 @@ from sklearn.model_selection import train_test_split
 from xgboost import XGBClassifier
 
 sys.path.insert(0, str(Path(__file__).parent))
-from features import FEATURE_COLS, engineer_features, load_and_filter  # noqa: E402
+from features import FEATURE_COLS, engineer_features, load_and_filter, pick_best_threshold  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -85,9 +85,6 @@ DEFAULT_XGB_PARAMS = {
     "verbosity": 0,
 }
 
-OPERATING_THRESHOLD = 0.9989
-
-
 def load_xgb_params() -> dict:
     """Use tuned hyperparameters from src/tune.py if available, else the defaults."""
     if BEST_PARAMS_PATH.exists():
@@ -126,8 +123,18 @@ def train(data_path: str, model_out: str) -> None:
     calibrated = CalibratedClassifierCV(FrozenEstimator(xgb), method="isotonic")
     calibrated.fit(X_calib, y_calib)
 
+    # Pick the decision threshold from the calibration split, not the test
+    # split -- choosing it on the same rows we report metrics on would let
+    # the threshold overfit to the number we're trying to honestly report.
+    # A threshold tuned for one set of hyperparameters/features isn't
+    # automatically right for another (see MODEL_CARD.md), so this is
+    # recomputed every training run rather than hardcoded.
+    calib_probs = calibrated.predict_proba(X_calib)[:, 1]
+    operating_threshold = pick_best_threshold(y_calib.to_numpy(), calib_probs)
+    log.info("Chosen decision threshold (cost-optimal on calibration split): %.4f", operating_threshold)
+
     probs = calibrated.predict_proba(X_test)[:, 1]
-    preds = (probs >= OPERATING_THRESHOLD).astype(int)
+    preds = (probs >= operating_threshold).astype(int)
 
     metrics = {
         "PR-AUC":    round(average_precision_score(y_test, probs), 4),
@@ -136,7 +143,7 @@ def train(data_path: str, model_out: str) -> None:
         "Recall":    round(recall_score(y_test, preds), 4),
         "F1":        round(f1_score(y_test, preds), 4),
         "Brier":     round(brier_score_loss(y_test, probs), 6),
-        "Threshold": OPERATING_THRESHOLD,
+        "Threshold": round(operating_threshold, 4),
     }
 
     log.info("Test-set metrics:")
@@ -149,7 +156,7 @@ def train(data_path: str, model_out: str) -> None:
     artifact = {
         "model":               calibrated,
         "feature_cols":        FEATURE_COLS,
-        "operating_threshold": OPERATING_THRESHOLD,
+        "operating_threshold": operating_threshold,
         "metrics":             metrics,
     }
     joblib.dump(artifact, out_path)
