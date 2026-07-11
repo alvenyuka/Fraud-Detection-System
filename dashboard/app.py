@@ -5,8 +5,11 @@ This turns everything the other scripts produced into something a visitor
 can actually use in a browser, with four tabs:
 
     1. Score a Transaction  — type in one transaction, get a fraud score
-    2. Model Performance    — the walk-forward results from src/validate.py
-    3. Batch Scoring        — upload a CSV, get every row scored
+    2. Model Performance    — the walk-forward results from src/validate.py,
+                              plus feature importance / probability spread /
+                              threshold trade-off from src/explain.py
+    3. Batch Scoring        — upload a CSV, get every row scored, with
+                              summary KPI cards and highlighted fraud rows
     4. Monitoring           — the drift timeline from src/monitoring.py
 
 Nothing on this page is invented — every number comes from a file that one
@@ -37,23 +40,51 @@ MODEL_PATH = ROOT / "model" / "xgb_fraud_model.pkl"
 st.set_page_config(page_title="Fraud Detection System", page_icon="🕵️", layout="wide")
 
 # ---------------------------------------------------------------------------
-# Colors — one small palette, used everywhere, instead of Plotly's defaults.
+# Colors — a dark theme built for a fraud-detection tool: dark navy/charcoal
+# for seriousness, one electric-blue accent, crimson/amber reserved for
+# fraud alerts. Used everywhere instead of Plotly's defaults.
 # ---------------------------------------------------------------------------
 
-COLOR_SURFACE = "#fcfcfb"
-COLOR_GRID = "#e1e0d9"
-COLOR_TEXT = "#0b0b0b"
-COLOR_MUTED = "#898781"
-COLOR_BLUE = "#2a78d6"      # the one accent color, used for single-series charts
-COLOR_GOOD = "#0ca30c"      # a prediction pushed toward "legitimate"
-COLOR_CRITICAL = "#d03b3b"  # a prediction pushed toward "fraud"
+COLOR_SURFACE = "#1A1A2E"     # chart plot area — matches the app's secondary background
+COLOR_GRID = "#33334D"        # subtle grid lines, visible on the dark surface
+COLOR_TEXT = "#FFFFFF"
+COLOR_MUTED = "#D3D3D3"
+COLOR_BLUE = "#4CC9F0"        # the one accent color, used for single-series charts
+COLOR_GOOD = "#2A9D8F"        # a prediction pushed toward "legitimate"
+COLOR_CRITICAL = "#E63946"    # a prediction pushed toward "fraud"
+COLOR_WARNING = "#F4A261"
 # Fixed-order categorical colors for charts with more than one series
 # (e.g. one line per feature) — never reassigned when the series list changes.
-CATEGORICAL_COLORS = ["#2a78d6", "#1baf7a", "#eda100", "#008300", "#4a3aa7", "#e34948"]
+CATEGORICAL_COLORS = ["#4CC9F0", "#2A9D8F", "#F4A261", "#E63946", "#9D8CFF", "#EAB308"]
+
+GLASS_CSS = """
+<style>
+.metric-card {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 1rem;
+    backdrop-filter: blur(4px);
+    text-align: center;
+}
+.metric-value { font-size: 2.2rem; font-weight: 700; color: #FFFFFF; }
+.metric-label { color: #D3D3D3; font-size: 0.85rem; margin-top: 0.25rem; }
+</style>
+"""
+
+
+def metric_card(value: str, label: str, color: str = "#FFFFFF") -> str:
+    """One glass-style KPI card, built from real values passed in — never sample data."""
+    return f"""
+<div class="metric-card">
+    <div class="metric-value" style="color:{color};">{value}</div>
+    <div class="metric-label">{label}</div>
+</div>
+"""
 
 
 def style_chart(figure: go.Figure, title: str, xaxis_title: str = "", yaxis_title: str = "") -> go.Figure:
-    """Apply the same light, clean look to every chart on the page."""
+    """Apply the same dark, clean look to every chart on the page."""
     figure.update_layout(
         title=title,
         xaxis_title=xaxis_title,
@@ -66,6 +97,9 @@ def style_chart(figure: go.Figure, title: str, xaxis_title: str = "", yaxis_titl
     figure.update_xaxes(gridcolor=COLOR_GRID, zerolinecolor=COLOR_GRID)
     figure.update_yaxes(gridcolor=COLOR_GRID, zerolinecolor=COLOR_GRID)
     return figure
+
+
+st.markdown(GLASS_CSS, unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------
@@ -102,18 +136,18 @@ def load_shap_explainer(_raw_xgb_model):
 
 @st.cache_data
 def load_saved_results():
-    """Load every small file the other scripts (validate.py, monitoring.py) produced."""
+    """Load every small file the other scripts (validate.py, monitoring.py, explain.py) produced."""
     results = {}
 
-    metrics_path = DATA_DIR / "metrics_summary.json"
-    if metrics_path.exists():
-        results["metrics_summary"] = json.loads(metrics_path.read_text())
+    for json_name in ["metrics_summary", "confusion_matrix", "feature_importance"]:
+        json_path = DATA_DIR / f"{json_name}.json"
+        if json_path.exists():
+            results[json_name] = json.loads(json_path.read_text())
 
-    confusion_matrix_path = DATA_DIR / "confusion_matrix.json"
-    if confusion_matrix_path.exists():
-        results["confusion_matrix"] = json.loads(confusion_matrix_path.read_text())
-
-    for csv_name in ["pr_curve", "calibration_curve", "walk_forward_results", "psi_timeline"]:
+    for csv_name in [
+        "pr_curve", "calibration_curve", "walk_forward_results", "psi_timeline",
+        "probability_distribution", "threshold_cost_curve",
+    ]:
         csv_path = DATA_DIR / f"{csv_name}.csv"
         if csv_path.exists():
             results[csv_name] = pd.read_csv(csv_path)
@@ -299,6 +333,63 @@ with tab_performance:
         style_chart(figure, "Confusion matrix (most recent fold)", "Predicted", "Actual")
         st.plotly_chart(figure, width="stretch")
 
+    st.divider()
+    st.subheader("Feature importance & probability spread (src/explain.py)")
+    st.caption(
+        "Computed from the shipped model scored against the full held-out test period — "
+        "answers whether one feature dominates the model's decisions."
+    )
+
+    imp_col, prob_col = st.columns(2)
+    with imp_col:
+        if "feature_importance" in saved_results:
+            importance = saved_results["feature_importance"]
+            figure = go.Figure(go.Bar(
+                x=[row["importance_pct"] for row in importance],
+                y=[row["feature"] for row in importance],
+                orientation="h",
+                marker=dict(color=COLOR_BLUE),
+            ))
+            style_chart(figure, "Mean |SHAP| importance by feature", "Importance (%)")
+            figure.update_yaxes(autorange="reversed")
+            st.plotly_chart(figure, width="stretch")
+        else:
+            st.info("Run `make explain` first to generate feature importance.")
+    with prob_col:
+        if "probability_distribution" in saved_results:
+            dist = saved_results["probability_distribution"]
+            figure = go.Figure()
+            figure.add_trace(go.Bar(x=dist["bin_start"], y=dist["count_legitimate"], name="Legitimate", marker=dict(color=COLOR_GOOD)))
+            figure.add_trace(go.Bar(x=dist["bin_start"], y=dist["count_fraud"], name="Fraud", marker=dict(color=COLOR_CRITICAL)))
+            style_chart(figure, "Predicted probability distribution", "Predicted fraud probability", "Transaction count")
+            figure.update_layout(barmode="overlay", yaxis_type="log")
+            figure.update_traces(opacity=0.75)
+            st.plotly_chart(figure, width="stretch")
+        else:
+            st.info("Run `make explain` first to generate the probability distribution.")
+
+    if "threshold_cost_curve" in saved_results:
+        st.markdown("**Threshold trade-off** — move the slider to see precision/recall/cost at that cutoff:")
+        curve = saved_results["threshold_cost_curve"]
+        chosen_threshold = st.slider(
+            "Decision threshold", min_value=0.0, max_value=1.0,
+            value=float(OPERATING_THRESHOLD), step=0.01,
+        )
+        nearest_row = curve.iloc[(curve["threshold"] - chosen_threshold).abs().idxmin()]
+
+        threshold_col1, threshold_col2, threshold_col3 = st.columns(3)
+        threshold_col1.metric("Precision at this threshold", f"{nearest_row['precision']:.4f}")
+        threshold_col2.metric("Recall at this threshold", f"{nearest_row['recall']:.4f}")
+        threshold_col3.metric("Expected cost", f"${int(nearest_row['cost']):,}")
+
+        figure = go.Figure()
+        figure.add_trace(go.Scatter(x=curve["threshold"], y=curve["cost"], mode="lines", line=dict(color=COLOR_BLUE, width=2)))
+        figure.add_vline(x=chosen_threshold, line_dash="dot", line_color=COLOR_WARNING)
+        style_chart(figure, "Expected cost by threshold ($1,000 per missed fraud, $10 per false alarm)", "Threshold", "Expected cost ($)")
+        st.plotly_chart(figure, width="stretch")
+    else:
+        st.info("Run `make explain` first to generate the threshold/cost curve.")
+
 # ---------------------------------------------------------------------------
 # Tab 3 — Batch Scoring
 # ---------------------------------------------------------------------------
@@ -313,9 +404,30 @@ with tab_batch:
         transactions = pd.read_csv(uploaded_file)
         scored_transactions = score_dataframe(transactions, artifact)
 
+        # KPI cards — every number here comes from the file the user just
+        # uploaded, nothing pre-canned.
+        n_total = len(scored_transactions)
         n_flagged = int(scored_transactions["fraud_flag"].sum())
-        st.success(f"Scored {len(scored_transactions):,} transactions — {n_flagged:,} flagged ({100 * n_flagged / len(scored_transactions):.2f}%)")
-        st.dataframe(scored_transactions, width="stretch")
+        n_high_risk = int((scored_transactions["fraud_score"] > 0.9).sum())
+        avg_amount = scored_transactions["amount"].mean() if "amount" in scored_transactions.columns else float("nan")
+
+        kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
+        kpi_col1.markdown(metric_card(f"{n_total:,}", "Total Transactions"), unsafe_allow_html=True)
+        kpi_col2.markdown(metric_card(f"{100 * n_flagged / n_total:.2f}%", "Fraud Rate", COLOR_CRITICAL), unsafe_allow_html=True)
+        kpi_col3.markdown(metric_card(f"{n_high_risk:,}", "High-Risk Alerts (>90%)", COLOR_WARNING), unsafe_allow_html=True)
+        kpi_col4.markdown(metric_card(f"${avg_amount:,.2f}" if avg_amount == avg_amount else "N/A", "Average Amount"), unsafe_allow_html=True)
+
+        st.markdown("")  # spacer
+        st.success(f"Scored {n_total:,} transactions — {n_flagged:,} flagged ({100 * n_flagged / n_total:.2f}%)")
+
+        # Highlight flagged rows so they stand out in the (already sortable,
+        # searchable-by-column-header) table.
+        def highlight_fraud(row: pd.Series) -> list[str]:
+            if row.get("fraud_flag") == 1:
+                return [f"background-color: {COLOR_CRITICAL}; color: white"] * len(row)
+            return [""] * len(row)
+
+        st.dataframe(scored_transactions.style.apply(highlight_fraud, axis=1), width="stretch")
         st.download_button(
             "Download scored CSV",
             scored_transactions.to_csv(index=False).encode("utf-8"),
@@ -347,7 +459,7 @@ with tab_monitoring:
                 mode="lines+markers", name=feature_name,
                 line=dict(color=color, width=2), marker=dict(size=6),
             ))
-        figure.add_hline(y=0.1, line_dash="dot", annotation_text="moderate shift (0.10)", line_color="#eda100")
+        figure.add_hline(y=0.1, line_dash="dot", annotation_text="moderate shift (0.10)", line_color=COLOR_WARNING)
         figure.add_hline(y=0.25, line_dash="dot", annotation_text="significant shift (0.25)", line_color=COLOR_CRITICAL)
         style_chart(figure, "Drift (PSI) over time, by feature", "Time step (window start)", "PSI")
         st.plotly_chart(figure, width="stretch")

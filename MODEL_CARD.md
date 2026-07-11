@@ -9,7 +9,7 @@
 | Field | Value |
 |---|---|
 | **Model type** | XGBoost + isotonic calibration |
-| **Version** | 1.2 — tuned hyperparameters, walk-forward validated, drift monitoring added |
+| **Version** | 1.3 — tuned hyperparameters, walk-forward validated, drift monitoring, feature-importance/threshold diagnostics added |
 | **Date** | 2026 |
 | **Author** | Alven Yuka (CPA Finalist, Kenya — awaiting ICPAK membership) |
 | **Contact** | alvenyuka2@gmail.com |
@@ -132,14 +132,14 @@ Verified by running `src/train.py` end-to-end against the real PaySim CSV (previ
 
 | Metric | Value | Notes |
 |---|---|---|
-| Precision | **100.00%** | At operating threshold 0.9989, tuned hyperparameters |
-| Recall | **89.47%** | Up from 88.63% before tuning — a modest, honest gain |
-| F1 | 0.9444 | At operating threshold 0.9989 |
-| PR-AUC | 0.9998 | Primary metric - honest under class imbalance |
-| ROC-AUC | 1.0000 * | See caveat below |
-| Brier score | 0.000017 | vs. random-baseline ~0.0204; calibrated on a held-out slice, not the training rows |
+| Precision | **99.85%** | At operating threshold 0.4000, picked dynamically by `pick_best_threshold` on the calibration split |
+| Recall | **99.56%** | After Step 6's raw-balance-column removal — see § Feature Engineering above |
+| F1 | 0.9971 | At operating threshold 0.4000 |
+| PR-AUC | 0.9993 | Primary metric - honest under class imbalance |
+| ROC-AUC | 0.9998 * | See caveat below |
+| Brier score | 0.00017 | vs. random-baseline ~0.0204; calibrated on a held-out slice, not the training rows |
 
-*PR-AUC and ROC-AUC of 1.0000 are a known property of PaySim once balance-discrepancy features are engineered — treat this as a documented dataset artifact, not evidence of real-world performance. See "Limitations and Risks" below.*
+*A near-1.0 PR-AUC/ROC-AUC is a known property of PaySim once balance-discrepancy features are engineered — treat this as a documented dataset artifact, not evidence of real-world performance. See "Limitations and Risks" below.*
 
 ### Walk-forward validation (Step 3, `src/validate.py`)
 

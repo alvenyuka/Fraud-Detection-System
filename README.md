@@ -1,12 +1,12 @@
 # Fraud-Detection-System
 
-> Mobile-money fraud classifier on PaySim — XGBoost at 100% precision and 89.5% recall on a 132K time-based holdout, validated across 4 walk-forward folds (PR-AUC 0.9997 ± 0.0004), with tuned hyperparameters, drift monitoring, and a live dashboard.
+> Mobile-money fraud classifier on PaySim — XGBoost at 99.85% precision and 99.56% recall on a 132K time-based holdout, validated across 4 walk-forward folds (PR-AUC 0.9986 ± 0.0013), with tuned hyperparameters, drift monitoring, feature-importance/threshold diagnostics, and a live dashboard.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 [![XGBoost](https://img.shields.io/badge/XGBoost-2.0+-EB6E2D)](https://xgboost.readthedocs.io/)
-[![PR-AUC](https://img.shields.io/badge/PR--AUC-0.9998-success)](#results)
-[![Brier](https://img.shields.io/badge/Brier-0.000017-success)](#calibration)
+[![PR-AUC](https://img.shields.io/badge/PR--AUC-0.9993-success)](#results)
+[![Brier](https://img.shields.io/badge/Brier-0.00017-success)](#calibration)
 [![Made with Jupyter](https://img.shields.io/badge/Made%20with-Jupyter-orange?logo=Jupyter)](https://jupyter.org/)
 
 ![Project banner — fraud-detection system on PaySim mobile-money data](banner.svg)
@@ -14,6 +14,17 @@
 ## 🔴 Live Dashboard
 
 **[fraud-detection-system-kmeuq7hku8tglnxdpmalfk.streamlit.app](https://fraud-detection-system-kmeuq7hku8tglnxdpmalfk.streamlit.app/)** — score a transaction live with a SHAP explanation, review the walk-forward validation results, batch-score a CSV, or inspect the drift-monitoring timeline. See "How this was built" below for what each tab is backed by.
+
+### Dashboard Preview
+
+| Tab | What it shows |
+|---|---|
+| 🔍 Score a Transaction | Fill in one transaction, get a fraud probability, a flag/no-flag verdict, a SHAP waterfall for *why*, and a contextual warning when the score is driven by a full-balance drain (see Step 6 below). |
+| 📊 Model Performance | Walk-forward validation metrics, PR and calibration curves, feature-importance bar chart, predicted-probability distribution (fraud vs. legitimate), and an interactive threshold slider showing precision/recall/cost at any cutoff (all from `src/explain.py`, Step 7). |
+| 📁 Batch Scoring | Upload a CSV, get every row scored with live KPI cards (total transactions, fraud rate, high-risk alerts, average amount) and flagged rows highlighted in the results table. |
+| 📈 Monitoring | PSI drift-over-time chart per engineered feature, against moderate/significant-shift reference lines. |
+
+*(Screenshots aren't checked into the repo — open the live link above to see it running against real data.)*
 
 ## Why?
 
@@ -33,6 +44,7 @@ This project was built up in stages, each one answering a question the previous 
 | 4. Drift monitoring | [`src/monitoring.py`](src/monitoring.py) | How would we know if the model started drifting in production? |
 | 5. Live dashboard | [`dashboard/app.py`](dashboard/app.py) | How does someone without Python actually use this? |
 | 6. Feature fix | [`src/features.py`](src/features.py) | Live-testing the dashboard found the model flagging legitimate account closures as 100% fraud — why, and how it was fixed |
+| 7. Diagnostics | [`src/explain.py`](src/explain.py) | Does one feature dominate the model's decisions, and where's the real precision/recall/cost trade-off as the threshold moves? |
 
 **Step 6 in detail:** the model used to take the raw balance columns (`oldbalanceOrg`, `newbalanceOrig`, etc.) as direct inputs alongside the engineered discrepancy features. Because PaySim's simulated fraud almost always drains the sender's account to exactly zero, the model learned "balance hits zero" as a fraud signal on its own — a $12 transaction that fully and correctly emptied a $12 account scored 100% fraud probability, even with zero actual accounting discrepancy. The raw balance columns were removed from the model's inputs (see `MODEL_CARD.md` § Feature Engineering).
 
@@ -48,6 +60,7 @@ Fraud-Detection-System/
 │   ├── tune.py             # Step 2 — hyperparameter search
 │   ├── validate.py         # Step 3 — walk-forward validation
 │   ├── monitoring.py       # Step 4 — drift monitoring
+│   ├── explain.py          # Step 7 — feature importance / probability spread / threshold curve
 │   └── predict.py          # Command-line scoring
 ├── dashboard/
 │   ├── app.py             # Step 5 — live Streamlit dashboard
@@ -85,13 +98,14 @@ make dashboard # launch the live dashboard locally
 
 ## Features
 
-- XGBoost calibrated to Brier score 0.000017 (vs. random baseline ~0.0204), calibrated on a held-out slice of the training period — not on the same rows the base model was fit on
-- 100% precision / 89.5% recall at operating threshold 0.9989, tuned hyperparameters (`src/tune.py`)
+- XGBoost calibrated to Brier score 0.00017 (vs. random baseline ~0.0204), calibrated on a held-out slice of the training period — not on the same rows the base model was fit on
+- 99.85% precision / 99.56% recall at operating threshold 0.4000, tuned hyperparameters (`src/tune.py`), threshold picked dynamically by cost (see `src/features.py::pick_best_threshold`) rather than hardcoded
 - Walk-forward validated across 4 time-based folds, not just one split (`src/validate.py`)
 - Simulated drift monitoring via PSI (`src/monitoring.py`)
+- Feature importance, probability spread, and threshold/cost trade-off diagnostics (`src/explain.py`)
 - Live dashboard for scoring, performance review, batch scoring, and monitoring (`dashboard/app.py`)
 - Time-based train/test split at step 490 — no leakage
-- Balance-discrepancy feature engineering (~85% of predictive signal)
+- Balance-discrepancy feature engineering (~43% of predictive signal — no single feature dominates, see `MODEL_CARD.md`)
 - SHAP attribution (2,000-row representative sample; stable across seeds)
 - Five-model comparison on identical feature pipelines
 - Inference script `src/predict.py` — scores a transaction or full CSV
@@ -156,17 +170,15 @@ make predict-csv INPUT=txns.csv OUTPUT=out.csv
 
 | Metric | Value |
 |---|---|
-| Precision | **100.00%** |
-| Recall | **89.47%** |
-| F1 | 0.9444 |
-| PR-AUC | 0.9998 |
-| ROC-AUC | 1.0000 * |
-| Brier score | 0.000017 |
-| Operating threshold | 0.9989 |
+| Precision | **99.85%** |
+| Recall | **99.56%** |
+| F1 | 0.9971 |
+| PR-AUC | 0.9993 |
+| ROC-AUC | 0.9998 |
+| Brier score | 0.00017 |
+| Operating threshold | 0.4000 |
 
-*(Retrained with tuned hyperparameters from `src/tune.py` — Step 2 of the build-up. Recall moved from 88.63% to 89.47%: a modest, honest gain, not a dramatic one — see the walk-forward validation below for why there wasn't much room to improve.)*
-
-*PR-AUC and ROC-AUC of 1.0000 are a documented PaySim property once balance-discrepancy features are engineered — the accounting-identity violation is nearly deterministic for fraud in this simulator, which is a property of the synthetic data generation, not evidence this would generalise to real transaction data (see [Limitations](#limitations-and-risks) in the model card).*
+*(These are the numbers from the current shipped model — tuned hyperparameters from `src/tune.py`, raw balance columns removed per Step 6 below, and the operating threshold picked dynamically on the calibration split by `src/features.py::pick_best_threshold` rather than hardcoded. Precision and recall both moved after Step 6's fix — see the walk-forward section below for the full honest trade-off, and `MODEL_CARD.md` for why a near-1.0 PR-AUC on PaySim isn't evidence this generalises to real transaction data.)*
 
 ### Walk-forward validation — does it hold up on more than one split?
 

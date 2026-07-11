@@ -1,14 +1,13 @@
 # Streamlit theme for the live dashboard.
 #
-# The default Streamlit theme is a flat dark grey with no real design behind
-# it. This is a proper light theme: a clean off-white surface with one
-# accent color (blue) used consistently, matching the same palette the
-# charts in dashboard/app.py are built from.
+# Dark theme per the reviewed colour-psychology recommendation for a fraud
+# detection tool: dark navy/charcoal for seriousness and focus, electric
+# blue/teal as the one accent color, crimson/amber reserved for fraud alerts.
 
 [theme]
-base = "light"
-primaryColor = "#2a78d6"
-backgroundColor = "#fcfcfb"
-secondaryBackgroundColor = "#f0f4fa"
-textColor = "#0b0b0b"
+base = "dark"
+primaryColor = "#4CC9F0"
+backgroundColor = "#0B0C10"
+secondaryBackgroundColor = "#1A1A2E"
+textColor = "#FFFFFF"
 font = "sans serif"
