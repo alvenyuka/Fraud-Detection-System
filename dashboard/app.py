@@ -51,7 +51,11 @@ COLOR_TEXT = "#FFFFFF"
 COLOR_MUTED = "#D3D3D3"
 COLOR_BLUE = "#4CC9F0"        # the one accent color, used for single-series charts
 COLOR_GOOD = "#2A9D8F"        # a prediction pushed toward "legitimate"
-COLOR_CRITICAL = "#E63946"    # a prediction pushed toward "fraud"
+COLOR_CRITICAL = "#E63946"    # a prediction pushed toward "fraud" (chart marks/lines only —
+                               # 4.09:1 on COLOR_SURFACE, below the 4.5:1 WCAG AA text minimum
+                               # but fine for graphical marks, which only need 3:1)
+COLOR_CRITICAL_TEXT = "#FA4552"  # same hue, lightened for text-on-dark-surface (4.9:1 on COLOR_SURFACE)
+COLOR_CRITICAL_BG = "#D43340"    # same hue, darkened for a fill with white text on top (4.83:1)
 COLOR_WARNING = "#F4A261"
 # Fixed-order categorical colors for charts with more than one series
 # (e.g. one line per feature) — never reassigned when the series list changes.
@@ -428,7 +432,7 @@ with tab_batch:
 
         kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
         kpi_col1.markdown(metric_card(f"{n_total:,}", "Total Transactions"), unsafe_allow_html=True)
-        kpi_col2.markdown(metric_card(f"{100 * n_flagged / n_total:.2f}%", "Fraud Rate", COLOR_CRITICAL), unsafe_allow_html=True)
+        kpi_col2.markdown(metric_card(f"{100 * n_flagged / n_total:.2f}%", "Fraud Rate", COLOR_CRITICAL_TEXT), unsafe_allow_html=True)
         kpi_col3.markdown(metric_card(f"{n_high_risk:,}", "High-Risk Alerts (>90%)", COLOR_WARNING), unsafe_allow_html=True)
         kpi_col4.markdown(metric_card(f"${avg_amount:,.2f}" if avg_amount == avg_amount else "N/A", "Average Amount"), unsafe_allow_html=True)
 
@@ -439,7 +443,7 @@ with tab_batch:
         # searchable-by-column-header) table.
         def highlight_fraud(row: pd.Series) -> list[str]:
             if row.get("fraud_flag") == 1:
-                return [f"background-color: {COLOR_CRITICAL}; color: white"] * len(row)
+                return [f"background-color: {COLOR_CRITICAL_BG}; color: white"] * len(row)
             return [""] * len(row)
 
         st.dataframe(scored_transactions.style.apply(highlight_fraud, axis=1), width="stretch")
