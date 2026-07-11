@@ -324,13 +324,28 @@ with tab_performance:
 
     if "confusion_matrix" in saved_results:
         cm = saved_results["confusion_matrix"]
+        matrix = cm["matrix"]
+        # Color each cell by its share of that row's total, not by the raw
+        # count. Fraud is a tiny fraction of all transactions, so a
+        # raw-count colorscale left 3 of the 4 cells almost invisible
+        # against the dark background (they were all under 3% of the
+        # biggest cell) -- including the "frauds caught" cell, the most
+        # important number here. Row-normalizing means each row's own
+        # largest cell is always fully colored, and the low end of the
+        # colorscale is a shade lighter than the plot background so even a
+        # near-zero cell still reads as a distinct tile.
+        row_totals = [sum(row) or 1 for row in matrix]
+        row_shares = [[cell / row_totals[i] for cell in row] for i, row in enumerate(matrix)]
         figure = go.Figure(go.Heatmap(
-            z=cm["matrix"], x=cm["labels"], y=cm["labels"],
-            text=cm["matrix"], texttemplate="%{text}",
-            colorscale=[[0, COLOR_SURFACE], [1, COLOR_BLUE]],
+            z=row_shares, x=cm["labels"], y=cm["labels"],
+            text=matrix, texttemplate="%{text}",
+            textfont=dict(size=18, color=COLOR_TEXT),
+            colorscale=[[0, "#2A2A45"], [1, COLOR_BLUE]],
+            zmin=0, zmax=1,
+            xgap=3, ygap=3,
             showscale=False,
         ))
-        style_chart(figure, "Confusion matrix (most recent fold)", "Predicted", "Actual")
+        style_chart(figure, "Confusion matrix (most recent fold, shaded by row share)", "Predicted", "Actual")
         st.plotly_chart(figure, width="stretch")
 
     st.divider()
