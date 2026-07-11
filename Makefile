@@ -5,6 +5,7 @@
 #   make tune             Search hyperparameters (writes model/best_params.json)
 #   make validate         Walk-forward validation (writes dashboard/data artifacts)
 #   make monitor          PSI drift monitoring (writes dashboard/data/psi_timeline.csv)
+#   make explain          Feature importance / probability spread / threshold curve
 #   make train            Train model on PaySim data
 #   make predict          Score a single transaction (interactive)
 #   make predict-csv      Score transactions.csv -> scored.csv
@@ -12,7 +13,7 @@
 #   make notebook         Launch Jupyter Lab
 #   make clean            Remove __pycache__ and build artefacts
 
-.PHONY: install tune validate monitor train predict predict-csv dashboard notebook clean help
+.PHONY: install tune validate monitor explain train predict predict-csv dashboard notebook clean help
 
 DATA     ?= PS_20174392719_1491204439457_log.csv
 MODEL    ?= model/xgb_fraud_model.pkl
@@ -35,6 +36,9 @@ validate: $(DATA)
 
 monitor: $(DATA)
 	$(PYTHON) src/monitoring.py --data $(DATA)
+
+explain: $(DATA)
+	$(PYTHON) src/explain.py --data $(DATA)
 
 # -- Train -------------------------------------------------------------------
 
@@ -85,6 +89,7 @@ help:
 	@echo "  make tune             Search hyperparameters -> model/best_params.json"
 	@echo "  make validate         Walk-forward validation -> dashboard/data artifacts"
 	@echo "  make monitor          PSI drift monitoring -> dashboard/data/psi_timeline.csv"
+	@echo "  make explain          Feature importance / probability spread / threshold curve"
 	@echo "  make train            Train on PaySim CSV  (set DATA= to override path)"
 	@echo "  make predict          Score one transaction interactively"
 	@echo "  make predict-csv      Score INPUT csv -> OUTPUT csv"
