@@ -68,11 +68,11 @@ def score_dataframe(df: pd.DataFrame, artifact: dict) -> pd.DataFrame:
     df["fraud_flag"]  = 0
 
     mask = df["type"].isin(ACTIVE_TYPES) if "type" in df.columns else pd.Series(True, index=df.index)
-    active = engineer_features(df[mask])
-
-    probs = model.predict_proba(active[FEATURE_COLS])[:, 1]
-    df.loc[mask, "fraud_score"] = probs
-    df.loc[mask, "fraud_flag"]  = (probs >= threshold).astype(int)
+    if mask.any():
+        active = engineer_features(df[mask])
+        probs = model.predict_proba(active[FEATURE_COLS])[:, 1]
+        df.loc[mask, "fraud_score"] = probs
+        df.loc[mask, "fraud_flag"]  = (probs >= threshold).astype(int)
 
     return df
 
