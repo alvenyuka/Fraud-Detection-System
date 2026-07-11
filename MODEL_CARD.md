@@ -163,6 +163,15 @@ These are the corrected model's numbers, after removing the raw balance columns 
 - **PaySim is a simulator.** Generalisation to real data is unverified and should be assumed poor without retraining.
 - **Drift monitoring is simulated, not real.** `src/monitoring.py` shows what PSI monitoring would look like using PaySim's own time horizon as a stand-in for "time passing in production" — there's no real production traffic behind it yet.
 - **Threshold is static per fold.** Each walk-forward fold in `src/validate.py` picks its own cost-optimal threshold; the shipped model still uses one fixed threshold. Different fraud rates require a different operating point.
+- **The model barely notices whether the recipient actually received the money.** Pre-deployment scenario testing swept how much of a fully-drained account's balance actually reached the recipient, holding everything else fixed (a $10,000 full-balance TRANSFER, sender drained to zero):
+
+  | % of debited amount credited to recipient | Fraud probability |
+  |---|---|
+  | 0% (money fully vanishes — classic mule fraud) | 94.77% |
+  | 25% / 50% / 75% (partial diversion) | 94.77% (bit-for-bit identical) |
+  | 100% (fully consistent, nothing missing) | 76.00% |
+
+  All four "money went missing" cases score *identically* — `dest_balance_discrepancy` only accounts for ~4% of SHAP importance (see `src/explain.py` output), so it barely moves the score even when it's the clearest fraud signal on the page. The flip side of the drain-ratio finding above: this model is a **sender-side full-drain detector**, not a general money-laundering detector. A fraud pattern that partially skims an account *without* fully draining it (e.g. debits 50% of a balance and the recipient gets none of it) scores near **0%** — confirmed directly: a $5,000 partial drain from a $10,000 balance with $0 reaching the recipient scores 0.0061%, indistinguishable from a routine legitimate transaction.
 - False positives freeze customer funds - high precision is a design requirement, not a vanity metric.
 
 ---
