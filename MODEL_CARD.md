@@ -172,6 +172,15 @@ These are the corrected model's numbers, after removing the raw balance columns 
   | 100% (fully consistent, nothing missing) | 76.00% |
 
   All four "money went missing" cases score *identically* — `dest_balance_discrepancy` only accounts for ~4% of SHAP importance (see `src/explain.py` output), so it barely moves the score even when it's the clearest fraud signal on the page. The flip side of the drain-ratio finding above: this model is a **sender-side full-drain detector**, not a general money-laundering detector. A fraud pattern that partially skims an account *without* fully draining it (e.g. debits 50% of a balance and the recipient gets none of it) scores near **0%** — confirmed directly: a $5,000 partial drain from a $10,000 balance with $0 reaching the recipient scores 0.0061%, indistinguishable from a routine legitimate transaction.
+
+  **A rule-based fix for this was tried and rejected — document this before re-attempting it.** The obvious patch is a safety-net rule layered on top of the ML score: flag any transaction where `dest_balance_discrepancy / amount` is large (the recipient got a lot less than they should have), regardless of what the model says. Tested properly (not just on a convenient sample):
+
+  | Evaluation set | Metric | ML only | ML + shortfall rule |
+  |---|---|---|---|
+  | Test split (steps 491–743) | Missed fraud / false alarms / cost | 12 / 4 / $12,040 | 10 / 68 / $10,680 |
+  | **Train split (steps 1–490)** | Missed fraud / false alarms / cost | 16 / 136 / $17,360 | 16 / **44,996** / **$465,960** |
+
+  The rule looks like a clear win on the test split — 2 more frauds caught, lower cost — but running the *same* rule against the training period (a much larger, more representative sample) causes a false-positive explosion: precision collapses from 97.6% to ~11%, and cost jumps 27×. The root cause: PaySim's destination-balance accounting isn't a strict per-transaction ledger, especially for `CASH_OUT` — the destination is often a shared merchant/agent cash float whose balance legitimately doesn't move 1:1 with any single transaction, for reasons unrelated to fraud. Restricting the rule to `TRANSFER`-only narrowed the damage (4,363 false alarms instead of 46,155) but still nearly quadrupled cost on the training period ($59,630 vs $17,360). **Conclusion: the model's low weighting of `dest_balance_discrepancy` is correct, not a gap to patch — it already learned that this signal isn't reliable at scale, and overriding that with a hand-written rule trades a known, bounded limitation for a much worse, harder-to-predict one.** Closing this blind spot for real would need labeled real-world partial-skim fraud examples to train on, not more feature engineering on this dataset.
 - False positives freeze customer funds - high precision is a design requirement, not a vanity metric.
 
 ---
