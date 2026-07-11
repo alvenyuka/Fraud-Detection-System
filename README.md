@@ -229,6 +229,7 @@ SHAP values on a 2,000-row stratified sample (stable across seeds):
 - [x] Walk-forward validation across multiple time splits (`src/validate.py`)
 - [x] Drift monitoring (PSI on balance-discrepancy features, `src/monitoring.py`)
 - [x] Live dashboard (`dashboard/app.py`)
+- [x] Feature-importance / threshold-cost diagnostics (`src/explain.py`)
 - [ ] Streaming inference (Kafka + FastAPI)
 
 ## License
