@@ -11,9 +11,11 @@
 
 ![Project banner — fraud-detection system on PaySim mobile-money data](banner.svg)
 
-## 🔴 Live Dashboard
+## 🔴 Live
 
-**[fraud-detection-system-kmeuq7hku8tglnxdpmalfk.streamlit.app](https://fraud-detection-system-kmeuq7hku8tglnxdpmalfk.streamlit.app/)** — score a transaction live with a SHAP explanation, review the walk-forward validation results, batch-score a CSV, or inspect the drift-monitoring timeline. See "How this was built" below for what each tab is backed by.
+**[fraud-detection-alven.vercel.app](https://fraud-detection-alven.vercel.app)** — case-study page with the full build-up, verified results, and charts. Loads instantly, no cold start.
+
+**[Interactive demo](https://fraud-detection-system-kmeuq7hku8tglnxdpmalfk.streamlit.app/)** — score a transaction live with a SHAP explanation, review the walk-forward validation results, batch-score a CSV, or inspect the drift-monitoring timeline. Runs on a free-tier host and may take ~20–30s to wake up on first load. See "How this was built" below for what each tab is backed by.
 
 ### Dashboard Preview
 
