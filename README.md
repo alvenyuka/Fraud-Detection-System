@@ -13,9 +13,9 @@
 
 ## 🔴 Live
 
-**[fraud-detection-alven.vercel.app](https://fraud-detection-alven.vercel.app)** — case-study page with the full build-up, verified results, and charts. Loads instantly, no cold start.
+**[fraud-detection-alven.vercel.app](https://fraud-detection-alven.vercel.app)** — case-study page with the full build-up, verified results, charts, and a live "Score a transaction" form. The scoring form runs the real shipped model, re-implemented in pure Python (see `src/export_model_json.py` and `api/score.py`) so the demo is always on with no cold start. Validated against the real scikit-learn/XGBoost output to within floating-point precision on 20,000 real held-out transactions.
 
-**[Interactive demo](https://fraud-detection-system-kmeuq7hku8tglnxdpmalfk.streamlit.app/)** — score a transaction live with a SHAP explanation, review the walk-forward validation results, batch-score a CSV, or inspect the drift-monitoring timeline. Runs on a free-tier host and may take ~20–30s to wake up on first load. See "How this was built" below for what each tab is backed by.
+**[Full dashboard](https://fraud-detection-system-kmeuq7hku8tglnxdpmalfk.streamlit.app/)** — the walk-forward results, feature-importance charts, batch CSV scoring, and drift-monitoring timeline, plus a SHAP waterfall for each score. Runs on a free-tier host and may take ~20–30s to wake up on first load. See "How this was built" below for what each tab is backed by.
 
 ### Dashboard Preview
 
