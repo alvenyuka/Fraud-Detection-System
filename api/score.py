@@ -9,8 +9,10 @@ src/export_model_json.py in the main repo) and MODEL_CARD.md for what it
 was trained on.
 
 Validated against the real scikit-learn/xgboost model: max absolute
-probability difference of 0.0000000994 across 5000 real held-out
-transactions (pure floating-point noise, not a modelling difference).
+probability difference of 0.0000038867 across 20,000 real held-out
+transactions, plus exact matches on full-drain, zero-balance, and
+tiny-amount edge cases (pure floating-point noise, not a modelling
+difference).
 """
 import json
 import math
