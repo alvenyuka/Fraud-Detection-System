@@ -223,6 +223,12 @@ SHAP values on a 2,000-row stratified sample (stable across seeds):
 
 ![SHAP beeswarm: per-feature attribution for the deployable XGBoost model](07_shap_beeswarm.png)
 
+## Known Limitations
+
+- **PaySim is a simulator, not real transaction data.** The near-1.0 PR-AUC reflects how deterministic PaySim's fraud-generation process becomes once these features are engineered, not evidence this generalises to production traffic (see `MODEL_CARD.md`).
+- **The drain-ratio artifact is only partially fixed.** `orig_drain_ratio` still leaks PaySim's "fully-drained account" fraud signature (a 100%-drained transaction scores 95.3% vs. 0.006% at any drain fraction 10–99%); fully removing it would mean retraining on real transaction data, not dropping more columns (see "How this was built" above).
+- **The shipped model uses one static decision threshold.** The cost-optimal threshold swings meaningfully fold to fold in walk-forward validation; a real deployment would need to revisit it periodically, not set it once.
+
 ## Roadmap
 
 - [x] Time-based evaluation harness
@@ -247,6 +253,8 @@ MIT. See [`LICENSE`](LICENSE).
 
 Dataset: Lopez-Rojas, E. A., Elmir, A., & Axelsson, S. (2016). *PaySim: A financial mobile money simulator for fraud detection.*
 Built by **Alven Yuka**, CPA Finalist.
+
+Every result reported above is the verified output of re-running `src/train.py` end-to-end against the real PaySim dataset — see Results above for the case where that check caught numbers the shipped pipeline had never actually produced.
 
 ## Connect
 
