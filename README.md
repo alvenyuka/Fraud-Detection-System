@@ -30,7 +30,7 @@
 
 ## Why?
 
-Mobile-money fraud is mostly a precision problem. The PaySim dataset has a 0.13% positive rate, so a model that says "not fraud" every time scores 99.87% accuracy while catching zero fraud. Production fraud-ops workflows freeze customer funds on a flag, so false positives carry direct trust and regulatory cost. This repo holds precision at or above 99% and evaluates on a strict time-based holdout, with no future-state leakage.
+Mobile-money fraud is mostly a precision problem. The PaySim dataset has a 0.13% positive rate, so a model that says "not fraud" every time scores 99.87% accuracy while catching zero fraud. Production fraud-ops workflows freeze customer funds on a flag, so false positives carry direct trust and regulatory cost. This repo reports precision on a strict time-based holdout, with no future-state leakage: 99.85% on the single holdout, and 95.6% on average across four walk-forward folds (lowest fold 87.3%). The holdout has a 2.08% fraud rate, about 16 times the dataset's 0.13% overall rate, so precision at production prevalence would be lower.
 
 > **A note on PaySim.** PaySim is widely used in introductory fraud-detection tutorials, so it's a common choice. What this repo adds is the evaluation rigour: strict time-based split, calibrated probabilities, cost-sensitive threshold selection, and a five-model comparison on identical feature pipelines.
 
@@ -199,7 +199,7 @@ The single-split numbers above only prove the model worked once. `src/validate.p
 | F1 | 0.9768 | ± 0.0262 |
 | Brier score | 0.0002 | ± 0.0001 |
 
-The low std dev across folds shows the model isn't a one-off lucky split. Performance stays consistently near-ceiling across the whole time horizon, consistent with PaySim's fraud signal being near-deterministic once these features are engineered (see caveat above).
+PR-AUC and recall are stable across folds (standard deviations 0.0013 and 0.0004), so the model is not a one-off lucky split. Precision is less stable: it averages 0.9561 with a standard deviation of 0.0490, and the earliest fold (steps 350 to 450, 0.25% fraud) reaches only 0.8731. PR-AUC and recall stay near-ceiling across the time horizon, consistent with PaySim's fraud signal being near-deterministic once these features are engineered (see caveat above).
 
 *(These numbers are from the corrected model, see "How this was built" § Step 6 above. Precision dropped from 0.9954 to 0.9561 and its fold-to-fold variance grew (± 0.0490) after removing the raw balance columns that used to let the model take a shortcut; recall improved slightly. That's the cost of no longer letting the model key off "balance hits zero": a small trade-off for a model that no longer calls legitimate account closures certain fraud.)*
 
