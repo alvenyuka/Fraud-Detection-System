@@ -70,7 +70,13 @@ def test_default_split_step_leaves_both_sides_populated():
 
 def test_a_random_split_would_overlap():
     """Demonstrates what the guard is guarding against: shuffling the same frame
-    puts later steps into training and earlier ones into test."""
+    puts later steps into training and earlier ones into test.
+
+    This one exercises no code from src/. It asserts a property of pandas, and
+    it is here as an executable illustration of the failure mode, not as
+    coverage of the guard. `test_split_produces_no_temporal_overlap` above is
+    the test that covers it.
+    """
     df = _stepped_frame()
     shuffled = df.sample(frac=1.0, random_state=0)
     r_train = shuffled.iloc[: len(df) // 2]

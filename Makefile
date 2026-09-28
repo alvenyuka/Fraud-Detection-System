@@ -1,4 +1,4 @@
-# Fraud Detection System — task runner
+# Fraud Detection System: task runner
 #
 # Usage:
 #   make install          Install Python dependencies
@@ -7,6 +7,7 @@
 #   make validate         Walk-forward validation (writes dashboard/data artifacts)
 #   make monitor          PSI drift monitoring (writes dashboard/data/psi_timeline.csv)
 #   make explain          Feature importance / probability spread / threshold curve
+#   make scenarios        Regenerate MODEL_CARD's scenario tables (no dataset needed)
 #   make train            Train model on PaySim data
 #   make predict          Score a single transaction (interactive)
 #   make predict-csv      Score transactions.csv -> scored.csv
@@ -14,7 +15,7 @@
 #   make notebook         Launch Jupyter Lab
 #   make clean            Remove __pycache__ and build artefacts
 
-.PHONY: install test tune validate monitor explain train predict predict-csv dashboard notebook clean help
+.PHONY: install test tune validate monitor explain scenarios train predict predict-csv dashboard notebook clean help
 
 DATA     ?= PS_20174392719_1491204439457_log.csv
 MODEL    ?= model/xgb_fraud_model.pkl
@@ -47,6 +48,10 @@ monitor: $(DATA)
 
 explain: $(DATA)
 	$(PYTHON) src/explain.py --data $(DATA)
+
+# Needs only the committed model artifact, not the dataset.
+scenarios:
+	$(PYTHON) src/scenarios.py
 
 # -- Train -------------------------------------------------------------------
 

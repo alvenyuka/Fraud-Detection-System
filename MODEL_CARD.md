@@ -135,7 +135,7 @@ Verified by running `src/train.py` end-to-end against the real PaySim CSV (previ
 | Precision | **99.85%** | At operating threshold 0.4000, picked dynamically by `pick_best_threshold` on the calibration split |
 | Recall | **99.56%** | After Step 6's raw-balance-column removal, see § Feature Engineering above |
 | F1 | 0.9971 | At operating threshold 0.4000 |
-| PR-AUC | 0.9993 | Primary metric - honest under class imbalance |
+| PR-AUC | 0.9993 | Primary metric, the one that stays informative under class imbalance |
 | ROC-AUC | 0.9998 * | See caveat below |
 | Brier score | 0.00017 | vs. random-baseline ~0.0204; calibrated on a held-out slice, not the training rows |
 
@@ -154,7 +154,13 @@ The table above is one split. `src/validate.py` repeats train → calibrate → 
 | F1 | 0.9768 | ± 0.0262 |
 | Brier score | 0.0002 | ± 0.0001 |
 
-These are the corrected model's numbers, after removing the raw balance columns (see § Feature Engineering above). Precision dropped from 0.9954 and its fold variance grew after the fix, the honest cost of no longer letting the model key off "balance hits zero" as a shortcut; recall improved slightly. Low std dev across folds is still real evidence this isn't a one-off lucky split. The genuine remaining catch: the per-fold cost-optimal threshold still varies a lot across folds, no single fixed threshold is clearly correct across all of them, which is the honest limitation the near-perfect PR-AUC hides. See "Limitations and Risks" below.
+These are the corrected model's numbers, after removing the raw balance columns (see § Feature Engineering above). Precision dropped from 0.9954 and its fold variance grew after the fix, which is the cost of no longer letting the model key off "balance hits zero" as a shortcut; recall improved slightly.
+
+**Read Precision, Recall and F1 in that table as optimistic.** They were produced by a version of `src/validate.py` that handed each fold's own test labels to `pick_best_threshold`, so the cutoff was chosen against the labels the metrics were then reported on. Under the 100-to-1 cost that drives recall to 1.0 almost by construction, which is why three of four folds sit on exactly 1.0. `validate.py` now picks the threshold on the calibration split, as `train.py` always did; regenerating the table needs the PaySim CSV. PR-AUC, ROC-AUC and Brier are threshold-free and are unaffected, and their stability across folds is the part of this table that still stands.
+
+**Folds 1 and 2 are also two of the three windows `src/tune.py` selected the hyperparameters on** (351-450 and 451-550). Folds 3 and 4 are clean of it. `train.py`'s own test set overlaps the third tuning window on steps 491-550.
+
+The remaining catch, unchanged: the per-fold cost-optimal threshold varies a lot across folds, so no single fixed threshold is clearly correct across all of them. See "Limitations and Risks" below.
 
 ---
 
@@ -163,7 +169,8 @@ These are the corrected model's numbers, after removing the raw balance columns 
 - **PaySim is a simulator.** Generalisation to real data is unverified and should be assumed poor without retraining.
 - **Drift monitoring is simulated, not real.** `src/monitoring.py` shows what PSI monitoring would look like using PaySim's own time horizon as a stand-in for "time passing in production"; there's no real production traffic behind it yet.
 - **Threshold is static per fold.** Each walk-forward fold in `src/validate.py` picks its own cost-optimal threshold; the shipped model still uses one fixed threshold. Different fraud rates require a different operating point.
-- **The model barely notices whether the recipient actually received the money.** Pre-deployment scenario testing swept how much of a fully-drained account's balance actually reached the recipient, holding everything else fixed (a $10,000 full-balance TRANSFER, sender drained to zero):
+- **The headline numbers are not reproducible across core counts.** `n_jobs` is `-1` and the tuned `subsample` is 0.84. XGBoost draws its row-subsample mask from per-thread RNG streams, so a fixed `random_state` does not make the fit thread-invariant when rows are subsampled. Measured on a 60,000-row synthetic frame: identical at `subsample=1.0`, up to 0.093 apart in predicted probability between one thread and four at `subsample=0.84`. Column subsampling does not cause it. Anyone re-running `make train` on different hardware should expect close but not equal numbers.
+- **The model barely notices whether the recipient actually received the money.** Pre-deployment scenario testing swept how much of a fully-drained account's balance actually reached the recipient, holding everything else fixed: a $10,000 full-balance TRANSFER, sender drained to zero, **recipient holding $2,000 beforehand**. That opening recipient balance is part of the scenario, not a detail, because the score moves with it; a table that omits it cannot be reproduced.
 
   | % of debited amount credited to recipient | Fraud probability |
   |---|---|
@@ -171,7 +178,9 @@ These are the corrected model's numbers, after removing the raw balance columns 
   | 25% / 50% / 75% (partial diversion) | 94.77% (bit-for-bit identical) |
   | 100% (fully consistent, nothing missing) | 76.00% |
 
-  All four "money went missing" cases score *identically*: `dest_balance_discrepancy` only accounts for ~4% of SHAP importance (see `src/explain.py` output), so it barely moves the score even when it's the clearest fraud signal on the page. The flip side of the drain-ratio finding above: this model is a **sender-side full-drain detector**, not a general money-laundering detector. A fraud pattern that partially skims an account *without* fully draining it (e.g. debits 50% of a balance and the recipient gets none of it) scores near **0%**, confirmed directly: a $5,000 partial drain from a $10,000 balance with $0 reaching the recipient scores 0.0061%, indistinguishable from a routine legitimate transaction.
+  `src/scenarios.py` regenerates this from the committed model and writes `dashboard/data/scenario_table.json`. It needs no dataset: `make scenarios`.
+
+  All four "money went missing" cases score *identically*: `dest_balance_discrepancy` only accounts for ~4% of SHAP importance (see `src/explain.py` output), so it barely moves the score even when it's the clearest fraud signal on the page. The flip side of the drain-ratio finding above: this model is a **sender-side full-drain detector**, not a general money-laundering detector. A fraud pattern that partially skims an account *without* fully draining it (e.g. debits 50% of a balance and the recipient gets none of it) scores near **0%**, confirmed directly and reproduced by the same script: a $5,000 partial drain from a $10,000 balance with $0 reaching the recipient scores 0.0061%, indistinguishable from a routine legitimate transaction.
 
   **A rule-based fix for this was tried and rejected; document this before re-attempting it.** The obvious patch is a safety-net rule layered on top of the ML score: flag any transaction where `dest_balance_discrepancy / amount` is large (the recipient got a lot less than they should have), regardless of what the model says. Tested properly (not just on a convenient sample):
 
@@ -198,7 +207,7 @@ These are the corrected model's numbers, after removing the raw balance columns 
 | `dest_amount_ratio` | 0.2633 | Significant shift |
 | `orig_balance_discrepancy` | 0.1264 | Moderate shift |
 
-This is an honest, useful finding, not a bug to fix: PaySim's transaction volume and fraud mix genuinely change over its 744-step horizon, so a model trained only on the earliest data would need re-calibration (or re-training) as time moves on, exactly the scenario drift monitoring exists to catch. See the dashboard's Monitoring tab for the full timeline chart.
+This is a useful finding, not a bug to fix: PaySim's transaction volume and fraud mix genuinely change over its 744-step horizon, so a model trained only on the earliest data would need re-calibration (or re-training) as time moves on, exactly the scenario drift monitoring exists to catch. See the dashboard's Monitoring tab for the full timeline chart.
 
 ## How to Use
 

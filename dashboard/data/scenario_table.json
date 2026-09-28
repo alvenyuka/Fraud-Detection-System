@@ -1,0 +1,65 @@
+{
+  "construction": {
+    "type": "TRANSFER",
+    "sender_opening_balance": 10000.0,
+    "recipient_opening_balance": 2000.0,
+    "note": "The recipient's opening balance changes the score, so it is recorded here. Without it the tables below cannot be reproduced."
+  },
+  "operating_threshold": 0.4000000059604645,
+  "diversion_sweep": [
+    {
+      "credited_share": 0.0,
+      "fraud_probability": 0.947741687297821
+    },
+    {
+      "credited_share": 0.25,
+      "fraud_probability": 0.947741687297821
+    },
+    {
+      "credited_share": 0.5,
+      "fraud_probability": 0.947741687297821
+    },
+    {
+      "credited_share": 0.75,
+      "fraud_probability": 0.947741687297821
+    },
+    {
+      "credited_share": 1.0,
+      "fraud_probability": 0.7599999904632568
+    }
+  ],
+  "drain_sweep": [
+    {
+      "drain_share": 0.1,
+      "fraud_probability": 6.067961294320412e-05
+    },
+    {
+      "drain_share": 0.25,
+      "fraud_probability": 6.129353550932137e-06
+    },
+    {
+      "drain_share": 0.5,
+      "fraud_probability": 4.639105827664025e-05
+    },
+    {
+      "drain_share": 0.75,
+      "fraud_probability": 5.279682591208257e-05
+    },
+    {
+      "drain_share": 0.9,
+      "fraud_probability": 6.129353550932137e-06
+    },
+    {
+      "drain_share": 0.99,
+      "fraud_probability": 6.129353550932137e-06
+    },
+    {
+      "drain_share": 1.0,
+      "fraud_probability": 0.7599999904632568
+    }
+  ],
+  "partial_skim": {
+    "description": "half the balance moved, nothing credited",
+    "fraud_probability": 6.067961294320412e-05
+  }
+}

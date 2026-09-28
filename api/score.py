@@ -8,14 +8,18 @@ itself is unchanged -- see model_export.json (exported by
 src/export_model_json.py in the main repo) and MODEL_CARD.md for what it
 was trained on.
 
-Validated against the real scikit-learn/xgboost model: max absolute
-probability difference of 0.0000038867 across 20,000 real held-out
-transactions, plus exact matches on full-drain, zero-balance, and
-tiny-amount edge cases (pure floating-point noise, not a modelling
-difference).
+Parity with the real model is enforced by tests/test_export_parity.py rather
+than asserted here. That test scores a fixed-seed sample of 20,000
+transactions through both this file's scoring path and the committed
+scikit-learn/xgboost pickle. The measured worst case is about 1.9e-06 in
+absolute probability, concentrated on rows that land exactly on a tree split
+threshold or an isotonic breakpoint; the mean disagreement is around 6e-10.
+A full drain is one of those rows, so it agrees to about 3.7e-06 rather than
+exactly, while zero-balance and tiny-amount cases match bit for bit.
 """
 import json
 import math
+import os
 import struct
 import urllib.request
 from http.server import BaseHTTPRequestHandler
@@ -26,8 +30,18 @@ from http.server import BaseHTTPRequestHandler
 _MODEL_URL = (
     "https://raw.githubusercontent.com/alvenyuka/Fraud-Detection-System/main/model/model_export.json"
 )
-with urllib.request.urlopen(_MODEL_URL, timeout=10) as resp:
-    _MODEL = json.loads(resp.read())
+
+# The parity test needs to import this module without a network call, and CI
+# has no reason to reach GitHub raw to run it. Setting this variable points the
+# loader at a local model_export.json instead. It is unset in the deployment,
+# which keeps the serverless path exactly as it was.
+_LOCAL_EXPORT = os.environ.get("FRAUD_MODEL_EXPORT_PATH")
+if _LOCAL_EXPORT:
+    with open(_LOCAL_EXPORT, encoding="utf-8") as fh:
+        _MODEL = json.load(fh)
+else:
+    with urllib.request.urlopen(_MODEL_URL, timeout=10) as resp:
+        _MODEL = json.loads(resp.read())
 
 FEATURE_NAMES = _MODEL["feature_names"]
 BASE_MARGIN = math.log(_MODEL["base_score"] / (1 - _MODEL["base_score"]))

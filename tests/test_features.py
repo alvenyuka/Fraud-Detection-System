@@ -153,8 +153,16 @@ def _total_cost(y_true, probs, threshold):
 
 
 def test_chosen_threshold_is_cost_optimal():
-    """The property that actually matters: no other candidate cutoff can beat the
-    one returned. Checked by brute force against every candidate."""
+    """The property that actually matters: no other cutoff can beat the one
+    returned.
+
+    The sweep below is a dense grid built here, deliberately not
+    `np.unique(np.concatenate([probs, [0.0, 1.0]]))`, which is the exact
+    candidate set the implementation itself builds. Reusing that set would
+    inherit the search space from the code under test, so a wrong candidate set
+    would pass. An independent grid catches that as well as an inverted
+    comparison.
+    """
     rng = np.random.default_rng(42)
     n = 600
     y = rng.binomial(1, 0.05, size=n)
@@ -162,7 +170,7 @@ def test_chosen_threshold_is_cost_optimal():
 
     best = pick_best_threshold(y, probs)
     best_cost = _total_cost(y, probs, best)
-    for candidate in np.unique(np.concatenate([probs, [0.0, 1.0]])):
+    for candidate in np.linspace(0.0, 1.0, 1001):
         assert _total_cost(y, probs, candidate) >= best_cost - 1e-9
 
 

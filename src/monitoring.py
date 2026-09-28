@@ -44,8 +44,9 @@ log = logging.getLogger(__name__)
 WINDOW_SIZE_STEPS = 50  # roughly 2 days of PaySim time per window
 N_BINS = 10
 
-# The 4 engineered features carry almost all of the model's predictive
-# signal (see MODEL_CARD.md), so drift here matters most.
+# These 4 engineered features carry 93.7% of mean |SHAP| attribution between
+# them (dashboard/data/feature_importance.json), with amount taking the
+# remaining 6.3%, so drift here matters most.
 MONITORED_FEATURES = [
     "orig_balance_discrepancy",
     "dest_balance_discrepancy",

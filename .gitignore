@@ -77,7 +77,7 @@ desktop.ini
 *.h5
 *.model
 models/
-# The shipped model is committed deliberately — src/predict.py and the live
+# The shipped model is committed deliberately: src/predict.py and the live
 # dashboard both need it available without a training run.
 !model/xgb_fraud_model.pkl
 

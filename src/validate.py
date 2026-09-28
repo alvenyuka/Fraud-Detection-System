@@ -16,6 +16,19 @@ real evidence the model is stable over time, not a one-off result.
     Fold 3: train on steps  1-550, test on 551-650
     Fold 4: train on steps  1-650, test on 651-743
 
+Two things a reader should know before trusting the numbers this writes.
+
+First, folds 1 and 2 (351-450 and 451-550) are the same two windows tune.py
+scored its Optuna trials on, so the hyperparameters those folds run with were
+selected to maximise PR-AUC on exactly those rows. Folds 3 and 4 are clean of
+that. Moving the tuning windows below step 350 would fix it and would mean
+re-tuning and re-training.
+
+Second, the artifacts currently committed in dashboard/data/ were produced
+before the threshold-selection fix in run_one_fold below, so their Precision,
+Recall and F1 are optimistic. See the comment there, and the walk-forward
+section of the README.
+
 It also saves the small chart-ready files the dashboard reads:
 dashboard/data/walk_forward_results.csv, pr_curve.csv, calibration_curve.csv,
 confusion_matrix.json, metrics_summary.json.
@@ -94,8 +107,18 @@ def run_one_fold(df: pd.DataFrame, train_end_step: int, test_end_step: int, xgb_
     calibrated_model = CalibratedClassifierCV(FrozenEstimator(base_model), method="isotonic")
     calibrated_model.fit(X_calibration, y_calibration)
 
+    # Pick the threshold on the calibration split, exactly as train.py does.
+    # An earlier version of this function passed y_test here, which made
+    # Precision, Recall and F1 oracle-thresholded: the cutoff was chosen to
+    # minimise cost against the very labels the metrics were then reported on.
+    # Under the 100-to-1 FN:FP cost that drives recall to 1.0 almost by
+    # construction, which is why three of four folds in the artifacts committed
+    # before this fix report recall of exactly 1.0. PR-AUC, ROC-AUC and Brier
+    # are threshold-free and were never affected.
+    calibration_probs = calibrated_model.predict_proba(X_calibration)[:, 1]
+    threshold = pick_best_threshold(y_calibration.to_numpy(), calibration_probs)
+
     predicted_probs = calibrated_model.predict_proba(X_test)[:, 1]
-    threshold = pick_best_threshold(y_test.to_numpy(), predicted_probs)
     predicted_fraud = (predicted_probs >= threshold).astype(int)
 
     return {

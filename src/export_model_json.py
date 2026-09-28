@@ -9,10 +9,13 @@ float32 precision) and the fitted isotonic calibration breakpoints as plain
 data. The Vercel function re-implements tree traversal and calibration in
 pure Python (stdlib only) -- see api/score.py.
 
-Validated to match the real model's predict_proba to within float32
-precision (max abs diff 0.0000000994 across 5000 real held-out rows) --
-see the validation run in this project's session notes before trusting
-this file's output.
+Parity with the real model is enforced by tests/test_export_parity.py, which
+scores a fixed-seed sample of 20,000 transactions through both this export
+(via api/score.py's pure-Python path) and the committed pickle, and asserts a
+bound that has actually been measured rather than one quoted from memory. The
+measured worst case is about 1.9e-06 in absolute probability, on a handful of
+rows that land on a tree split threshold or an isotonic breakpoint; the mean
+disagreement is around 6e-10.
 
 Usage
 -----

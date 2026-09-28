@@ -31,6 +31,13 @@ jobs:
       # prevents future-state leakage, and the PSI drift calculation. Training
       # and walk-forward validation stay local steps (see the Makefile).
       #
+      # tests/test_export_parity.py is the slow one, around 90 seconds. It
+      # scores 20,000 fixed-seed transactions through the pure-Python port the
+      # live demo serves and through the committed pickle, and needs both
+      # artifacts but no dataset. It is the reason this job takes minutes
+      # rather than seconds, and it is worth the time: that port is the one
+      # component here that can go wrong without raising anything.
+      #
       # Only the packages the tested modules import at module level are needed.
       # shap, optuna, streamlit and plotly are not, so CI skips them.
       - name: Install dependencies

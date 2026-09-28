@@ -8,8 +8,7 @@ just "whatever numbers we guessed the first time."
 
 How we test each combination of settings ("trial"):
   1. Take only the training period (steps 1-650). The last part of the
-     dataset (steps 651-743) is never touched here. It is saved for the
-     walk-forward check in src/validate.py and for train.py's own test set.
+     dataset (steps 651-743) is never touched here.
   2. Inside that training period, split time into 3 smaller before/after
      windows (see TUNING_SPLITS below). For each window, train on the
      "before" part and score on the "after" part.
@@ -17,6 +16,21 @@ How we test each combination of settings ("trial"):
      like fraud) across the 3 windows. That average is the trial's score.
 Optuna (a hyperparameter search library) tries ~40 different combinations
 and remembers which one scored highest.
+
+Where this overlaps with the reporting splits, stated plainly rather than
+claimed away. Two of the three tuning windows, 351-450 and 451-550, are also
+walk-forward folds 1 and 2 in src/validate.py, and train.py splits at step 490
+so 491-550 of its test set sits inside the third tuning window, about a quarter
+of its test rows. So the hyperparameters here were selected partly on rows that
+are later used to report results. Folds 3 and 4 (551-650 and 651-743) are
+clean. Fixing it properly means moving every tuning window below step 350 and
+re-running both tune and train; nothing here is corrected by editing a comment.
+
+A second, smaller overlap inside this script: line 104 passes the window's own
+test rows as XGBoost's eval_set with early_stopping_rounds set, so the number
+of boosting rounds for a trial is chosen on the rows that trial is then scored
+on. That biases the comparison between trials. An inner holdout inside each
+window, or a fixed n_estimators, would remove it.
 
 Usage
 -----
@@ -46,8 +60,11 @@ log = logging.getLogger(__name__)
 optuna.logging.set_verbosity(optuna.logging.WARNING)  # keep Optuna's own logs quiet, we log ourselves below
 
 # Three small "before -> after" windows used only for tuning. All of them sit
-# inside the training period (step <= 650), so tuning never sees the data
-# that validate.py or train.py use to report final results.
+# inside the training period (step <= 650), but two of them are also reporting
+# windows elsewhere: 351-450 and 451-550 are walk-forward folds 1 and 2 in
+# validate.py, and 491-550 is part of train.py's test set. See the module
+# docstring. To remove the overlap entirely these all have to end at or before
+# step 350, which means re-tuning.
 TUNING_SPLITS = [
     (250, 350),  # train on steps <= 250, score on steps 251-350
     (350, 450),

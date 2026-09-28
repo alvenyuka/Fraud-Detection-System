@@ -52,7 +52,13 @@ def load_and_filter(path: str) -> pd.DataFrame:
 
 def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Add balance-discrepancy features that carry ~85% of predictive signal.
+    Add the four engineered features the model is built on.
+
+    Per dashboard/data/feature_importance.json, written by src/explain.py,
+    orig_balance_discrepancy carries 43.31% of mean |SHAP| attribution and
+    dest_balance_discrepancy 4.06%, so the two discrepancy features together
+    are 47.4%. Adding orig_drain_ratio at 31.43% takes the two sender-side
+    features to 74.7%.
 
     Accounting identity for a clean transaction:
         newbalanceOrig  = oldbalanceOrg  - amount
@@ -84,10 +90,19 @@ def pick_best_threshold(y_true: np.ndarray, predicted_probs: np.ndarray) -> floa
     threshold does the opposite. This picks the balance point using the
     $1000 (missed fraud) vs $10 (false alarm) costs above. Used by both
     train.py (to pick the threshold the shipped model ships with) and
-    validate.py (to pick each walk-forward fold's own threshold) -- a
+    validate.py (to pick each walk-forward fold's own threshold), because a
     threshold tuned for one set of hyperparameters/features isn't
     automatically right for another, so this always gets recomputed rather
     than hardcoded.
+
+    Both callers must hand this the calibration split's labels, never the test
+    split's. Choosing the cutoff on the same rows the metrics are reported on
+    makes those metrics oracle-thresholded rather than out-of-sample.
+
+    On a cost tie this returns the lowest of the tied thresholds, because the
+    search keeps the first strict improvement over an ascending candidate list.
+    At equal cost the higher threshold is the better operational choice, since
+    it raises fewer alerts for the same money.
     """
     candidate_thresholds = np.unique(np.concatenate([predicted_probs, [0.0, 1.0]]))
     best_threshold, lowest_cost = 0.5, np.inf
