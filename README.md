@@ -7,7 +7,7 @@
 [![XGBoost](https://img.shields.io/badge/XGBoost-2.0+-EB6E2D)](https://xgboost.readthedocs.io/)
 [![PR-AUC](https://img.shields.io/badge/PR--AUC-0.9993-success)](#results)
 [![Brier](https://img.shields.io/badge/Brier-0.00017-success)](#calibration)
-[![Made with Jupyter](https://img.shields.io/badge/Made%20with-Jupyter-orange?logo=Jupyter)](https://jupyter.org/)
+[![tests](https://github.com/alvenyuka/Fraud-Detection-System/actions/workflows/ci.yml/badge.svg)](https://github.com/alvenyuka/Fraud-Detection-System/actions/workflows/ci.yml)
 
 ![Project banner: fraud-detection system on PaySim mobile-money data](banner.svg)
 
