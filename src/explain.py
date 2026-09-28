@@ -1,17 +1,17 @@
 """
-explain.py — Step 7 of the model build-up: richer dashboard diagnostics.
+explain.py: Step 7 of the model build-up, richer dashboard diagnostics.
 
 Loads the already-shipped model (no retraining here) and scores the same
 held-out test period train.py evaluates on, then saves three small files the
 dashboard's Model Performance tab reads:
 
-  - feature_importance.json    — mean |SHAP| per feature, as a percentage
-  - probability_distribution.csv — binned histogram of predicted probabilities,
+  - feature_importance.json    : mean |SHAP| per feature, as a percentage
+  - probability_distribution.csv : binned histogram of predicted probabilities,
                                     fraud vs. legitimate (binned, not one row
                                     per transaction, so the file stays small
                                     enough to commit like every other
                                     dashboard/data file)
-  - threshold_cost_curve.csv   — precision/recall/cost at a range of
+  - threshold_cost_curve.csv   : precision/recall/cost at a range of
                                   candidate decision thresholds, so the
                                   dashboard's threshold slider has real
                                   numbers to look up instead of recomputing
@@ -54,14 +54,14 @@ COST_PER_FALSE_ALARM = 10
 
 
 def get_raw_xgboost_model(artifact: dict):
-    """Same unwrapping dashboard/app.py does — SHAP needs the tree model, not the calibration wrapper."""
+    """Same unwrapping dashboard/app.py does. SHAP needs the tree model, not the calibration wrapper."""
     calibrated_model = artifact["model"]
     first_fold = calibrated_model.calibrated_classifiers_[0]
     return first_fold.estimator.estimator
 
 
 def save_feature_importance(raw_xgb_model, X_sample: pd.DataFrame) -> None:
-    """Mean |SHAP| per feature, as a percentage — answers 'does one feature dominate?'"""
+    """Mean |SHAP| per feature, as a percentage. Shows whether one feature dominates."""
     explainer = shap.TreeExplainer(raw_xgb_model)
     shap_values = explainer(X_sample)
     mean_abs_shap = np.abs(shap_values.values).mean(axis=0)

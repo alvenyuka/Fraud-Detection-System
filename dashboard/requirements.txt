@@ -1,4 +1,4 @@
-# Minimal dependencies for the live dashboard only — the full requirements.txt
+# Minimal dependencies for the live dashboard only. The full requirements.txt
 # at the repo root also installs training/tuning/notebook tools (Jupyter,
 # Optuna, LightGBM, etc.) that the deployed dashboard never imports. Streamlit
 # Cloud's free tier has a tight memory budget, so keeping this list lean

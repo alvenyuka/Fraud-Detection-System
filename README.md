@@ -63,7 +63,11 @@ Fraud-Detection-System/
 │   ├── validate.py         # Step 3: walk-forward validation
 │   ├── monitoring.py       # Step 4: drift monitoring
 │   ├── explain.py          # Step 7: feature importance / probability spread / threshold curve
+│   ├── export_model_json.py  # Dumps the trained model to plain JSON for api/score.py
 │   └── predict.py          # Command-line scoring
+├── tests/
+│   ├── test_features.py             # Accounting identity + cost-sensitive threshold
+│   └── test_split_and_monitoring.py # Leakage guard + PSI drift
 ├── api/
 │   └── score.py           # Pure-Python model port for the live Vercel demo
 ├── dashboard/
@@ -74,7 +78,10 @@ Fraud-Detection-System/
 │   ├── xgb_fraud_model.pkl   # Trained model (run make train)
 │   ├── best_params.json      # Tuned hyperparameters (run make tune)
 │   └── model_export.json     # Dependency-free export used by api/score.py
+├── .github/workflows/ci.yml   # Runs the tests on every push
 ├── Fraud Detection System.ipynb
+├── conftest.py             # Puts src/ on sys.path for the tests
+├── pytest.ini
 ├── requirements.txt
 ├── Makefile
 ├── MODEL_CARD.md
@@ -91,6 +98,8 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
+make test   # runs in seconds, needs neither the dataset nor a trained model
+
 make train DATA=PS_20174392719_1491204439457_log.csv
 make predict
 
@@ -100,6 +109,24 @@ make validate  # walk-forward validation across 4 time-based folds
 make monitor   # simulated drift monitoring
 make dashboard # launch the live dashboard locally
 ```
+
+**What each step costs.** `make test` needs nothing but the repo. Everything
+below it needs the 470MB PaySim CSV, and the notebook is the heavy one:
+
+| Step | Needs the dataset | Rough cost |
+|---|---|---|
+| `make test` | no | seconds |
+| `make train` | yes | a few minutes |
+| `make validate` | yes | longer, four walk-forward folds |
+| the notebook, end to end | yes | 45 to 90 minutes, and roughly 6 to 8GB of free memory |
+
+The notebook is heavier than the pipeline because it fits five models rather
+than one, including a stacking ensemble that refits three base learners across
+three cross-validation folds. Thread counts are bounded by `N_JOBS` in the
+config cell for that reason: `n_jobs=-1` nests inside the stack, and each
+worker takes its own copy of a 2.6-million-row frame, so the peak is set by how
+many are alive at once rather than by the data. Raise `N_JOBS` if you have the
+headroom.
 
 ## Features
 
@@ -124,6 +151,7 @@ make dashboard # launch the live dashboard locally
 | Modelling | `scikit-learn`, `xgboost`, `lightgbm`, `imbalanced-learn` |
 | Explainability | `shap` |
 | Serialisation | `joblib` |
+| Testing | `pytest`, GitHub Actions |
 | Environment | `jupyter`, `jupyterlab` |
 
 ## Installation
@@ -227,6 +255,34 @@ SHAP values on a 2,000-row stratified sample (stable across seeds):
 
 PaySim is a simulator. The near-1.0 PR-AUC above comes from how deterministic its fraud-generation process becomes once these features are engineered, so it isn't evidence this generalises to production traffic (see `MODEL_CARD.md`). The drain-ratio artifact described in "How this was built" is only partially fixed: `orig_drain_ratio` still leaks the "fully-drained account" fraud signature, and closing that gap fully would mean retraining on transaction data from a real payment system rather than dropping more columns. The shipped model also uses one static decision threshold, even though the cost-optimal threshold swings meaningfully fold to fold in walk-forward validation, so a production deployment would need to revisit it periodically.
 
+## Tests
+
+```bash
+make test        # or: python -m pytest
+```
+
+25 tests, a few seconds, run in CI on Python 3.11 and 3.13 on every push. They
+need neither the 470MB PaySim CSV nor a trained model: each one builds a small
+frame by hand or from a fixed seed. That is deliberate. The point is not to
+re-check the model's score, which a walk-forward run already reports, but to pin
+the four pieces of logic that can break silently and still leave every downstream
+number looking plausible.
+
+| What is tested | Why it is the thing that can break silently |
+|---|---|
+| **The time-based split** (`time_based_split`) | Fraud data is temporal. A random split lets the model see later transactions from accounts it is later asked to score, which inflates every metric downstream, and nothing downstream can tell a leaked score from an earned one. One test asserts the training window ends strictly before the test window begins; another shuffles the same frame to demonstrate the overlap the guard prevents. |
+| **The accounting identity** (`engineer_features`) | The balance-discrepancy features come from arithmetic, not from learning, so they can be asserted exactly rather than approximately. A clean transaction must score zero on both sides; a drained-origin transaction must break the identity by exactly the amount. Zero balances are checked separately, because an `inf` or `NaN` from a zero denominator would quietly become a category of its own inside the model. |
+| **The cost-sensitive threshold** (`pick_best_threshold`) | A model that ranks perfectly and cuts at the wrong threshold still loses money. The test brute-forces every candidate cutoff and asserts none beats the one returned, and a second test pins the 100-to-1 cost ratio that makes the optimiser choose a threshold well below 0.5. |
+| **PSI drift** (`calculate_psi`) | PSI is the number that decides whether the model has gone stale in production, so it is asserted to be zero on identical samples, to grow monotonically as a distribution shifts, and to stay finite on a constant feature rather than raising and stopping the whole monitoring run. |
+
+`FEATURE_COLS` membership is also pinned by name, and the raw balance columns are
+asserted absent. The test that iterates the list would otherwise delete its own
+coverage the moment an entry was removed, and the raw balances are exactly the
+shortcut Step 6 removed.
+
+Training, tuning, walk-forward validation and drift monitoring all need the
+dataset, so they stay local steps behind the Makefile rather than running in CI.
+
 ## Roadmap
 
 - [x] Time-based evaluation harness
@@ -241,6 +297,7 @@ PaySim is a simulator. The near-1.0 PR-AUC above comes from how deterministic it
 - [x] Live dashboard (`dashboard/app.py`)
 - [x] Feature-importance / threshold-cost diagnostics (`src/explain.py`)
 - [x] Always-on live scoring demo (`api/score.py`, `src/export_model_json.py`)
+- [x] Unit tests on the leakage guard, the accounting identity, the threshold search and PSI, run in CI (`tests/`)
 - [ ] Streaming inference (Kafka + FastAPI)
 
 ## License

@@ -1,0 +1,42 @@
+name: tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      # The PaySim CSV is 470 MB, gitignored, and not ours to redistribute, so
+      # CI cannot train anything. Every test in tests/ runs on small hand-built
+      # or fixed-seed synthetic frames and checks the logic that can break
+      # silently: the accounting identity behind the balance-discrepancy
+      # features, the cost-sensitive threshold search, the time-based split that
+      # prevents future-state leakage, and the PSI drift calculation. Training
+      # and walk-forward validation stay local steps (see the Makefile).
+      #
+      # Only the packages the tested modules import at module level are needed.
+      # shap, optuna, streamlit and plotly are not, so CI skips them.
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install "numpy<2.3" "pandas>=2.0" "scikit-learn>=1.6" "xgboost>=2.0" joblib pytest
+
+      - name: Run tests
+        run: python -m pytest

@@ -1,9 +1,9 @@
 """
-monitoring.py — Step 4 of the model build-up: drift monitoring.
+monitoring.py: Step 4 of the model build-up, drift monitoring.
 
 A model that scores well today can quietly stop working later if the data
 it sees in production starts looking different from the data it was trained
-on — this is called "drift". This project's own README listed drift
+on. This is called "drift". This project's own README listed drift
 monitoring as something not yet built. This script builds a simple version
 of it.
 
@@ -12,7 +12,7 @@ already spans many time steps, so we treat the earliest slice of time as
 "what the model was trained on" and check how much every later slice has
 drifted away from it.
 
-The tool used to measure drift is PSI (Population Stability Index) — a single
+The tool used to measure drift is PSI (Population Stability Index), a single
 number per feature per time window:
     PSI < 0.10        -> stable, no action needed
     0.10 <= PSI < 0.25 -> moderate shift, worth watching
@@ -62,9 +62,9 @@ def calculate_psi(reference_values: np.ndarray, current_values: np.ndarray, n_bi
 
     Steps:
       1. Cut the reference sample into `n_bins` equal-sized groups (deciles by default).
-      2. Count what fraction of the reference sample falls in each group — this is the
+      2. Count what fraction of the reference sample falls in each group. This is the
          "expected" shape of the distribution.
-      3. Count what fraction of the current sample falls in the *same* groups — the
+      3. Count what fraction of the current sample falls in the *same* groups, the
          "actual" shape now.
       4. PSI adds up how far "actual" has drifted from "expected", bin by bin.
     A result near 0 means the two samples look the same; a large result means the
@@ -72,7 +72,7 @@ def calculate_psi(reference_values: np.ndarray, current_values: np.ndarray, n_bi
     """
     bin_edges = np.unique(np.quantile(reference_values, np.linspace(0, 1, n_bins + 1)))
     if len(bin_edges) < 3:
-        return 0.0  # feature barely varies — nothing meaningful to compare
+        return 0.0  # feature barely varies, nothing meaningful to compare
 
     bin_edges[0], bin_edges[-1] = -np.inf, np.inf  # catch any values outside the reference range
     reference_counts, _ = np.histogram(reference_values, bins=bin_edges)

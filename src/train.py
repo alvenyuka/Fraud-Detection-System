@@ -1,5 +1,5 @@
 """
-train.py — Step 1 of the model build-up: the baseline model.
+train.py: Step 1 of the model build-up, the baseline model.
 
 This is where the project starts: load PaySim data, engineer the
 balance-discrepancy features, train an XGBoost classifier, and calibrate its
@@ -7,10 +7,10 @@ probabilities so a "0.9" score really does mean roughly a 90% chance of fraud.
 
 The rest of the build-up lives in separate scripts, each answering a
 question this baseline leaves open:
-  - src/tune.py     — were these hyperparameters ever tested against alternatives?
-  - src/validate.py — does this hold up on more than one train/test split?
-  - src/monitoring.py — how would we know if the model started drifting?
-  - dashboard/app.py  — how does someone without Python actually use this?
+  - src/tune.py     : tests the hyperparameters against alternatives.
+  - src/validate.py : checks the result survives more than one split.
+  - src/monitoring.py : flags when the inputs drift away from training.
+  - dashboard/app.py  : puts the model in front of a non-Python user.
 
 Usage
 -----
@@ -92,7 +92,7 @@ def load_xgb_params() -> dict:
         params = {**DEFAULT_XGB_PARAMS, **tuned}
         log.info("Using tuned hyperparameters from %s", BEST_PARAMS_PATH)
         return params
-    log.info("No %s found — using default hyperparameters.", BEST_PARAMS_PATH.name)
+    log.info("No %s found, using default hyperparameters.", BEST_PARAMS_PATH.name)
     return DEFAULT_XGB_PARAMS
 
 
@@ -104,7 +104,7 @@ def train(data_path: str, model_out: str) -> None:
     train_df, test_df = time_based_split(df)
 
     # Hold out a calibration slice from the training period so isotonic
-    # regression isn't fit on rows XGBoost has already memorised — fitting a
+    # regression isn't fit on rows XGBoost has already memorised. Fitting a
     # calibrator on the same data used to train the base model overstates
     # how well-calibrated the model actually is on unseen data.
     fit_df, calib_df = train_test_split(

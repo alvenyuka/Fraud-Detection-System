@@ -1,5 +1,5 @@
 """
-export_model_json.py — exports the shipped model to a dependency-free JSON
+export_model_json.py: exports the shipped model to a dependency-free JSON
 format for the Vercel-hosted interactive demo.
 
 xgboost + scikit-learn + scipy together are ~245MB installed, which is at or

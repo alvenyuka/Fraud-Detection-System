@@ -1,9 +1,9 @@
 """
-validate.py — Step 3 of the model build-up: walk-forward validation.
+validate.py: Step 3 of the model build-up, walk-forward validation.
 
 The first version of this project only ever tested the model on one
 train/test split (train on steps 1-490, test on 491-743). That tells us the
-model worked once, on one slice of time — it doesn't tell us whether that
+model worked once, on one slice of time. It doesn't tell us whether that
 was a lucky split or a model that actually holds up.
 
 This script repeats the same train -> calibrate -> test recipe from
@@ -135,7 +135,7 @@ def validate(data_path: str) -> None:
             result["Recall"], result["F1"], result["threshold"],
         )
 
-    # Average each metric across all 4 folds, plus how much it varies (std) —
+    # Average each metric across all 4 folds, plus how much it varies (std):
     # a small std means the model behaves consistently across time.
     metric_names = ["PR-AUC", "ROC-AUC", "Precision", "Recall", "F1", "Brier"]
     summary = {
@@ -161,7 +161,7 @@ def save_dashboard_artifacts(fold_results: list, summary: dict) -> None:
     fold_table.to_csv(DASHBOARD_DATA_DIR / "walk_forward_results.csv", index=False)
 
     # Charts (PR curve, calibration curve, confusion matrix) come from the
-    # most recent fold, since it's trained on the most data — the closest
+    # most recent fold, since it's trained on the most data, the closest
     # thing we have to "the model as it would ship today".
     most_recent_fold = fold_results[-1]
 

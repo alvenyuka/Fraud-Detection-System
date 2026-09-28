@@ -2,6 +2,7 @@
 #
 # Usage:
 #   make install          Install Python dependencies
+#   make test             Run the unit tests (no dataset needed)
 #   make tune             Search hyperparameters (writes model/best_params.json)
 #   make validate         Walk-forward validation (writes dashboard/data artifacts)
 #   make monitor          PSI drift monitoring (writes dashboard/data/psi_timeline.csv)
@@ -13,7 +14,7 @@
 #   make notebook         Launch Jupyter Lab
 #   make clean            Remove __pycache__ and build artefacts
 
-.PHONY: install tune validate monitor explain train predict predict-csv dashboard notebook clean help
+.PHONY: install test tune validate monitor explain train predict predict-csv dashboard notebook clean help
 
 DATA     ?= PS_20174392719_1491204439457_log.csv
 MODEL    ?= model/xgb_fraud_model.pkl
@@ -25,6 +26,13 @@ PYTHON   := python
 
 install:
 	$(PYTHON) -m pip install -r requirements.txt
+
+# -- Test --------------------------------------------------------------------
+
+# Runs on small synthetic frames only, so it needs neither the 470MB PaySim CSV
+# nor a trained model. This is the same command CI runs.
+test:
+	$(PYTHON) -m pytest
 
 # -- Tune / Validate / Monitor -------------------------------------------------
 
@@ -86,6 +94,7 @@ clean:
 help:
 	@echo ""
 	@echo "  make install          Install dependencies from requirements.txt"
+	@echo "  make test             Run unit tests (no dataset or model needed)"
 	@echo "  make tune             Search hyperparameters -> model/best_params.json"
 	@echo "  make validate         Walk-forward validation -> dashboard/data artifacts"
 	@echo "  make monitor          PSI drift monitoring -> dashboard/data/psi_timeline.csv"

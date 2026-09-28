@@ -1,5 +1,5 @@
 """
-tune.py — Step 2 of the model build-up: hyperparameter tuning.
+tune.py: Step 2 of the model build-up, hyperparameter tuning.
 
 The original model (src/train.py) used one fixed set of XGBoost settings that
 were never actually tested against alternatives. This script tries a range of
@@ -8,12 +8,12 @@ just "whatever numbers we guessed the first time."
 
 How we test each combination of settings ("trial"):
   1. Take only the training period (steps 1-650). The last part of the
-     dataset (steps 651-743) is never touched here — it's saved for the
+     dataset (steps 651-743) is never touched here. It is saved for the
      walk-forward check in src/validate.py and for train.py's own test set.
   2. Inside that training period, split time into 3 smaller before/after
      windows (see TUNING_SPLITS below). For each window, train on the
      "before" part and score on the "after" part.
-  3. Average the score (PR-AUC — the right metric for rare-event problems
+  3. Average the score (PR-AUC, the right metric for rare-event problems
      like fraud) across the 3 windows. That average is the trial's score.
 Optuna (a hyperparameter search library) tries ~40 different combinations
 and remembers which one scored highest.
@@ -95,7 +95,7 @@ def score_one_trial(params: dict, df) -> float:
         test_window = df[(df["step"] > train_end_step) & (df["step"] <= window_end_step)]
 
         if test_window["isFraud"].sum() == 0:
-            continue  # skip a window with no fraud cases — nothing to score
+            continue  # skip a window with no fraud cases, nothing to score
 
         X_train, y_train = train_window[FEATURE_COLS], train_window["isFraud"]
         X_test, y_test = test_window[FEATURE_COLS], test_window["isFraud"]
@@ -113,7 +113,7 @@ def tune(data_path: str, n_trials: int, out_path: str) -> None:
     df = load_and_filter(data_path)
     df = engineer_features(df)
 
-    # Only steps <= 650 are used for tuning — keeps the final held-out period untouched.
+    # Only steps <= 650 are used for tuning, keeping the final held-out period untouched.
     training_period = df[df["step"] <= 650]
 
     study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler(seed=42))

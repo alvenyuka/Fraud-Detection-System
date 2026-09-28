@@ -1,5 +1,5 @@
 """
-api/score.py — Vercel serverless function: real-time fraud scoring.
+api/score.py: Vercel serverless function for real-time fraud scoring.
 
 Re-implements the shipped XGBoost + isotonic-calibration model in pure
 Python (stdlib only, no xgboost/scikit-learn) so it fits comfortably inside

@@ -1,16 +1,16 @@
 """
-predict.py — the command-line way to use the model train.py produces.
+predict.py: the command-line way to use the model train.py produces.
 
 Loads the saved model and scores one or more transactions. This is the
 plain-Python entry point; dashboard/app.py (Step 5 of the build-up) wraps
 this same scoring logic in a web page for people who don't want to use the
 command line.
 
-Usage — score a single transaction (interactive)
+Usage, score a single transaction (interactive)
 -------------------------------------------------
     python src/predict.py --model model/xgb_fraud_model.pkl
 
-Usage — score a CSV of transactions
+Usage, score a CSV of transactions
 -------------------------------------
     python src/predict.py \\
         --model model/xgb_fraud_model.pkl \\

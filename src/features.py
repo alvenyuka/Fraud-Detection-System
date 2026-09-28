@@ -1,5 +1,5 @@
 """
-features.py — shared feature engineering for the Fraud Detection System.
+features.py: shared feature engineering for the Fraud Detection System.
 
 Single source of truth for the PaySim loading/filtering and balance-discrepancy
 feature engineering used by train.py, predict.py, tune.py, validate.py, and
