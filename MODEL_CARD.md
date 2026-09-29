@@ -11,7 +11,7 @@
 | **Model type** | XGBoost + isotonic calibration |
 | **Version** | 1.4: tuned hyperparameters, walk-forward validated, drift monitoring, feature-importance/threshold diagnostics, always-on live scoring demo |
 | **Date** | 2026 |
-| **Author** | Alven Yuka (CPA Finalist, awaiting ICPAK membership) |
+| **Author** | Alven Yuka (CPA Finalist) |
 | **Contact** | alvenyuka2@gmail.com |
 | **License** | MIT |
 | **Repository** | https://github.com/alvenyuka/Fraud-Detection-System |
