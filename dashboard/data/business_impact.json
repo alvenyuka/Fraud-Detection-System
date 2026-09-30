@@ -1,0 +1,43 @@
+{
+  "population": "132,136 TRANSFER and CASH_OUT transactions after step 490",
+  "currency": "PaySim simulated currency units; a fraud's value is its transaction amount",
+  "operating_threshold": 0.012269938364624977,
+  "results": {
+    "No screening": {
+      "frauds_caught": 0,
+      "frauds_missed": 2754,
+      "fraud_value_stopped": 0.0,
+      "fraud_value_missed": 4190812449.6600003,
+      "share_of_fraud_value_stopped": 0.0,
+      "honest_transactions_frozen": 0,
+      "honest_value_frozen": 0.0
+    },
+    "isFlaggedFraud rule": {
+      "frauds_caught": 10,
+      "frauds_missed": 2744,
+      "fraud_value_stopped": 46474810.66,
+      "fraud_value_missed": 4144337639.0000005,
+      "share_of_fraud_value_stopped": 0.011089689939183626,
+      "honest_transactions_frozen": 0,
+      "honest_value_frozen": 0.0
+    },
+    "Model, threshold 0.0123": {
+      "frauds_caught": 2743,
+      "frauds_missed": 11,
+      "fraud_value_stopped": 4190413404.58,
+      "fraud_value_missed": 399045.08000040054,
+      "share_of_fraud_value_stopped": 0.9999047809739057,
+      "honest_transactions_frozen": 44,
+      "honest_value_frozen": 8496499.620000001
+    },
+    "Model, threshold 0.5": {
+      "frauds_caught": 2742,
+      "frauds_missed": 12,
+      "fraud_value_stopped": 4190059530.36,
+      "fraud_value_missed": 752919.3000001907,
+      "share_of_fraud_value_stopped": 0.9998203404926743,
+      "honest_transactions_frozen": 3,
+      "honest_value_frozen": 310876.08
+    }
+  }
+}
