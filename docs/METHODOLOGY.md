@@ -204,9 +204,7 @@ make predict-csv INPUT=txns.csv OUTPUT=out.csv
 
 **PR-AUC is the primary metric.** Accuracy and ROC-AUC are misleading at 0.13% positive rate.
 
-![Calibration curve: XGBoost predicted probabilities vs. observed fraud rate](../04_calibration_curve.png)
-
-![Balance discrepancy fingerprint: fraud vs. legitimate transactions](../02_balance_discrepancy_fingerprint.png)
+![Balance discrepancy fingerprint: fraud vs. legitimate transactions](../figures/balance_discrepancy_fingerprint.png)
 
 ## Results
 
@@ -249,21 +247,31 @@ The cost-optimal threshold still swings from fold to fold (0.50, 0.89, 0.019, 0.
 
 ### Exploratory model comparison (from the notebook, not the shipped pipeline)
 
-| Model | PR-AUC | ROC-AUC | Recall @ 99% Precision |
+The notebook compares five models on its own raw-plus-error-balance features, on the same time split
+(train to step 490, test after it). From its full run on 30 September 2026:
+
+| Model | PR-AUC | ROC-AUC | Recall @ 99% precision |
 |---|---|---|---|
-| Random Forest | 1.0000 | 1.0000 | 1.0000 |
-| Stacking Ensemble | 1.0000 | 1.0000 | 1.0000 |
-| XGBoost | 0.9987 | 1.0000 | 0.9688 |
-| Logistic Regression | 0.7905 | 0.9796 | 0.4506 |
-| LightGBM (default) | 0.2451 | 0.9502 | 0.0000 |
+| Stacking ensemble | 1.0000 | 1.0000 | 1.0000 |
+| Random forest | 1.0000 | 1.0000 | 1.0000 |
+| XGBoost + SMOTE (ablation) | 0.9995 | 1.0000 | 0.9949 |
+| Logistic regression | 0.7901 | 0.9795 | 0.4503 |
+| XGBoost, `scale_pos_weight` 336 | 0.4771 | 0.9855 | 0.0000 |
+| LightGBM, default settings | 0.0357 | 0.7041 | 0.0000 |
 
-XGBoost was carried forward into `src/train.py` as the shipped model. It didn't top this table (Random Forest and Stacking did, at a suspicious literal 1.0000 across every metric). It was chosen because a single well-understood tree model is easier to justify to a risk team than an ensemble that looks too good to be true. *LightGBM = 0.2451 here uses `scale_pos_weight` but otherwise-default `num_leaves=31`, which overfits badly on this dataset's ~5,500 training-period fraud rows. The same failure mode fixed for XGBoost above (regularize hard enough to match the size of the positive class, rather than the size of the dataset) would likely fix this too, but wasn't re-run for this pass.*
+The notebook's earlier stored outputs showed its XGBoost at 0.9987; they predated the removal of `step` (the
+split variable) from its features. Without `step`, a shallow XGBoost weighted by the raw class ratio (336)
+over-fits the few fraud rows and assigns probability 1.0 to legitimate transactions on the later window, while
+the same model trained on SMOTE-balanced data reaches 0.9995. The shipped pipeline treats the class weight as
+a hyperparameter: `src/tune.py`, choosing only on earlier data, picked 2.14. XGBoost is still the shipped model
+because, with tuned settings and the engineered balance features, it matches the ensembles' ranking (holdout
+PR-AUC 0.9996) as a single, explainable model, and the ensembles' literal 1.0000 on a simulator is more likely
+a sign of PaySim's determinism than of a better model. LightGBM's `num_leaves=31` default over-fits the
+training period's roughly 5,500 fraud rows in the same way.
 
-![Precision-recall curve scoreboard](../03_pr_curve_scoreboard.png)
+The notebook renders the precision-recall scoreboard, calibration, permutation-importance and SHAP charts for these models inline.
 
-SHAP values on a 2,000-row stratified sample (stable across seeds):
-
-![SHAP beeswarm: per-feature attribution for the deployable XGBoost model](../07_shap_beeswarm.png)
+![Holdout precision and recall by threshold, and the four walk-forward folds, for the shipped model](../figures/threshold_tradeoff.png)
 
 ## Known Limitations
 
