@@ -1,92 +1,103 @@
 # Fraud Detection System
 
-> How can a mobile-money operator stop fraudulent transfers without freezing honest customers' money? An XGBoost model on 6.3 million simulated mobile-money transactions: 99.85% precision and 99.56% recall on a time-based holdout, with a live scoring demo.
+An XGBoost fraud classifier for mobile-money transfers, trained on 6.3 million PaySim transactions and tested
+on a strict time-based holdout. At a cost-based threshold it catches **2,743 of 2,754 frauds (99.6% recall)**
+at **98.4% precision**, and a live demo scores transactions in the browser.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
-[![XGBoost](https://img.shields.io/badge/XGBoost-2.0+-EB6E2D)](https://xgboost.readthedocs.io/)
 [![tests](https://github.com/alvenyuka/Fraud-Detection-System/actions/workflows/ci.yml/badge.svg)](https://github.com/alvenyuka/Fraud-Detection-System/actions/workflows/ci.yml)
 
-![Project banner: fraud-detection system on PaySim mobile-money data](banner.svg)
+![Precision and recall on the holdout as the threshold moves, and PR-AUC, precision and recall on four walk-forward folds](figures/threshold_tradeoff.png)
 
-**Try it:** [live scoring page](https://fraud-detection-alven.vercel.app) · [full dashboard](https://fraud-detection-system-kmeuq7hku8tglnxdpmalfk.streamlit.app/) (free host, allow about 30 seconds to wake)
+**Try it:** [live scoring page](https://fraud-detection-alven.vercel.app) · [dashboard](https://fraud-detection-system-kmeuq7hku8tglnxdpmalfk.streamlit.app/) (free host, allow about 30 seconds to wake)
 
-## The problem
+## Overview
 
-In mobile money, a fraud flag usually freezes the customer's funds. Every false alarm is an honest customer
-locked out of their own money, which costs trust and invites regulatory complaints. Every missed fraud is a
-direct loss. Fraud is also rare, about 0.13% of transactions here, so a model that never flags anything is
-99.87% "accurate" and useless.
+In mobile money a fraud flag usually freezes the customer's funds, so every false alarm locks an honest
+customer out of their own money, and every missed fraud is a direct loss. Fraud is about 0.13% of
+transactions here, so a model that never flags anything is 99.87% accurate and useless. The useful questions
+are precision and recall at a threshold set by what each mistake costs, and whether they hold over time.
 
-The question for a fraud-operations team is therefore not accuracy but precision and recall at a threshold
-set by what each kind of mistake costs.
+## Results
 
-## What I found
+Holdout: the 132,136 transactions after simulated hour 490 (2,754 frauds, 2.1%).
 
-| Measure (132,136 transactions after the training period) | Result |
+| Measure | Result |
 |---|---:|
-| Precision, flagged transactions that were fraud | **99.85%** |
-| Recall, frauds that were caught | **99.56%** |
-| PR-AUC, ranking quality across all thresholds | 0.9993 |
-| PR-AUC averaged over 4 later time windows | 0.9986 ± 0.0013 |
+| Frauds caught (recall) | **2,743 of 2,754, 99.6%** |
+| Flags that were fraud (precision) | **98.4%**, 44 false alarms |
+| PR-AUC | 0.9996 |
+| Walk-forward PR-AUC, 4 later windows | 0.9983 ± 0.0019 |
+| Walk-forward precision / recall | 99.0% / 99.7% |
 
-- **Fraud in this data has one signature: the sender's account is drained to zero** while the balances do not
-  add up. Two engineered features built on that accounting identity carry about three quarters of the model's
-  decisions.
-- **Testing the live demo exposed a costly error, and I fixed it.** The first model flagged legitimate account
-  closures, for example a customer emptying their own $12 account, as certain fraud, because it had learned
-  "balance hits zero" on its own. Removing the raw balance inputs stopped that.
-- **The threshold has to be revisited.** The cost-optimal cutoff shifts noticeably from one time window to the
-  next, so a fixed threshold set once would drift out of date in production.
+- **The threshold is a business decision, and the data shows its price.** Costing a missed fraud at 100 times
+  a false alarm puts the cutoff at 0.012. Any cutoff from 0.02 to 0.5 misses one more fraud but raises only 3
+  false alarms instead of 44, so if a wrongly frozen account costs more than about $24, the higher threshold
+  is the better choice.
+- **Fraud here has one signature: the sender's account is drained to zero.** The two sender-side features
+  carry 63% of the model's SHAP attribution, and a fraud that skims part of an account scores close to zero.
+- **Testing the live demo exposed a costly error, which was fixed.** An earlier model flagged a customer
+  emptying their own $12 account as certain fraud, because it had learned "balance hits zero" from the raw
+  balance columns. Removing those inputs stopped it.
 
-**What I would recommend to a fraud-operations team:** use a model like this to rank and triage alerts,
-choose the threshold from the real cost of a frozen account versus a missed fraud, review it on a schedule,
-and add rules for partial-drain fraud, which this model does not catch (see Limitations).
+## Approach
 
-## How it works
+```mermaid
+flowchart LR
+    A[6.36M PaySim transactions] --> B[TRANSFER and CASH_OUT: 2.77M]
+    B --> C[Balance-discrepancy features]
+    C --> D[Time split at hour 490]
+    D --> E[XGBoost tuned on hours up to 350]
+    E --> F[Isotonic calibration, cost-based threshold]
+    F --> G[Holdout, 4 walk-forward folds, PSI drift]
+```
 
-1. **Time-based split.** Train on the first 490 simulated hours, test on the rest, so the model never sees
-   the future.
-2. **Accounting features.** For each transaction, check whether the sender's and recipient's balances move
-   by exactly the amount sent. Fraud breaks that identity.
-3. **XGBoost with tuned settings**, then probability calibration on a held-out slice of the training period.
-4. **Cost-based threshold.** The cutoff is chosen by weighing a missed fraud at 100 times the cost of a false
-   alarm, not fixed at 0.5.
-5. **Monitoring.** Population Stability Index tracks whether the inputs drift over time, and SHAP explains
-   each individual score in the dashboard.
+1. **Accounting features.** For each transaction, check whether the sender's and recipient's balances move by
+   exactly the amount sent; fraud breaks that identity.
+2. **No look-ahead.** Hyperparameters are tuned only on windows ending by hour 350, before every reporting
+   window; thresholds are chosen on a calibration slice, never on test rows.
+3. **Calibrated scores and a cost-based cutoff**, rather than a fixed 0.5.
+4. **Monitoring.** Population Stability Index tracks drift in each input over time, and SHAP explains each
+   score in the dashboard.
 
-## Run it
+## Repository structure
+
+```
+src/            features, tuning, training, walk-forward validation, monitoring, SHAP, scenarios
+api/score.py    pure-Python port of the model behind the live demo, parity-tested
+dashboard/      Streamlit dashboard and the precomputed results it reads
+model/          trained model, tuned settings, JSON export
+tests/          28 tests: time split, accounting identity, threshold search, PSI, port parity
+MODEL_CARD.md   intended use, evaluation, limitations
+```
+
+## Getting started
 
 ```bash
 pip install -r requirements.txt
-make test      # 28 tests, no dataset needed
+make test       # 28 tests, no dataset needed
 # download PaySim from Kaggle into the project root, then:
-make train     # train and save the model, a few minutes
-make predict   # score a transaction
+make train      # train and save the model, a few minutes
+make validate   # four walk-forward folds
+make predict    # score a transaction
 ```
 
-## Limitations
+## Notes
 
-- **PaySim is a simulator, not real payment traffic.** Its fraud becomes almost deterministic once these
-  features are built, which is why the scores are so high. They show a sound evaluation method, not the
-  accuracy to expect on a real network.
-- **It detects full-drain fraud only.** A fraud that skims part of an account without emptying it scores
-  close to zero.
-- **The test period is fraud-heavy** (2.08% fraud against 0.13% overall), so precision at real-world
-  prevalence would be lower.
+- PaySim is a simulator: once these features exist its fraud is almost deterministic, which is why the scores
+  are so high. They show the evaluation method, not the accuracy to expect on a real network.
+- The holdout is fraud-heavy (2.1% against 0.13% overall), so precision at real prevalence would be lower.
+- The cost-optimal threshold moves between time windows (0.017 to 0.89 across the folds), so a deployment
+  would need to review it on a schedule.
 
-## More detail
+## Documentation
 
-The full write-up, with the walk-forward results and their caveats, the five-model comparison, drift
-findings and the tests, is in [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md). The model's intended use and
-risks are in [`MODEL_CARD.md`](MODEL_CARD.md).
+The full method, the tuning and walk-forward details, drift findings and the tests are in
+[`docs/METHODOLOGY.md`](docs/METHODOLOGY.md); intended use and risks are in [`MODEL_CARD.md`](MODEL_CARD.md).
 
 ## License
 
 MIT. See [`LICENSE`](LICENSE). Data: Lopez-Rojas, Elmir and Axelsson (2016), *PaySim: A financial mobile money simulator for fraud detection* ([Kaggle](https://www.kaggle.com/datasets/ealaxi/paysim1)).
 
-## Connect
-
-Built by Alven Yuka, CPA Finalist and Accounting Specialist at GIZ, Nairobi.
-
-📫 [alvenyuka2@gmail.com](mailto:alvenyuka2@gmail.com) · 💼 [LinkedIn](https://www.linkedin.com/in/alven-yuka-610b78174/) · 🐙 [GitHub](https://github.com/alvenyuka)
+Alven Yuka · [LinkedIn](https://www.linkedin.com/in/alven-yuka-610b78174/) · [Email](mailto:alvenyuka2@gmail.com)

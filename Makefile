@@ -8,6 +8,7 @@
 #   make monitor          PSI drift monitoring (writes dashboard/data/psi_timeline.csv)
 #   make explain          Feature importance / probability spread / threshold curve
 #   make scenarios        Regenerate MODEL_CARD's scenario tables (no dataset needed)
+#   make figures          Redraw the README chart from dashboard/data (no dataset needed)
 #   make train            Train model on PaySim data
 #   make predict          Score a single transaction (interactive)
 #   make predict-csv      Score transactions.csv -> scored.csv
@@ -15,7 +16,7 @@
 #   make notebook         Launch Jupyter Lab
 #   make clean            Remove __pycache__ and build artefacts
 
-.PHONY: install test tune validate monitor explain scenarios train predict predict-csv dashboard notebook clean help
+.PHONY: install test tune validate monitor explain scenarios figures train predict predict-csv dashboard notebook clean help
 
 DATA     ?= PS_20174392719_1491204439457_log.csv
 MODEL    ?= model/xgb_fraud_model.pkl
@@ -52,6 +53,10 @@ explain: $(DATA)
 # Needs only the committed model artifact, not the dataset.
 scenarios:
 	$(PYTHON) src/scenarios.py
+
+# Reads only dashboard/data, so it needs neither the dataset nor a training run.
+figures:
+	$(PYTHON) src/make_figures.py
 
 # -- Train -------------------------------------------------------------------
 
@@ -104,6 +109,7 @@ help:
 	@echo "  make validate         Walk-forward validation -> dashboard/data artifacts"
 	@echo "  make monitor          PSI drift monitoring -> dashboard/data/psi_timeline.csv"
 	@echo "  make explain          Feature importance / probability spread / threshold curve"
+	@echo "  make figures          Redraw the README chart from dashboard/data"
 	@echo "  make train            Train on PaySim CSV  (set DATA= to override path)"
 	@echo "  make predict          Score one transaction interactively"
 	@echo "  make predict-csv      Score INPUT csv -> OUTPUT csv"

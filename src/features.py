@@ -55,10 +55,10 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     Add the four engineered features the model is built on.
 
     Per dashboard/data/feature_importance.json, written by src/explain.py,
-    orig_balance_discrepancy carries 43.31% of mean |SHAP| attribution and
-    dest_balance_discrepancy 4.06%, so the two discrepancy features together
-    are 47.4%. Adding orig_drain_ratio at 31.43% takes the two sender-side
-    features to 74.7%.
+    the two sender-side features carry most of the model's decisions:
+    orig_drain_ratio 40.0% of mean |SHAP| attribution and
+    orig_balance_discrepancy 23.1%, 63.0% together. dest_balance_discrepancy
+    carries 6.2%.
 
     Accounting identity for a clean transaction:
         newbalanceOrig  = oldbalanceOrg  - amount

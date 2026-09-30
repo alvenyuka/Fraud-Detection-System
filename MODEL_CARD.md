@@ -9,7 +9,7 @@
 | Field | Value |
 |---|---|
 | **Model type** | XGBoost + isotonic calibration |
-| **Version** | 1.4: tuned hyperparameters, walk-forward validated, drift monitoring, feature-importance/threshold diagnostics, always-on live scoring demo |
+| **Version** | 1.5: re-tuned only on windows that precede every reporting split; walk-forward thresholds chosen on calibration data; drift monitoring, SHAP diagnostics, live scoring demo |
 | **Date** | 2026 |
 | **Author** | Alven Yuka (CPA Finalist) |
 | **Contact** | alvenyuka2@gmail.com |
@@ -24,7 +24,14 @@
 
 ### Hyperparameter Tuning
 
-The original hyperparameters were hand-picked and never tested against alternatives. `src/tune.py` now searches ~40 combinations (tree depth, learning rate, regularisation, class-imbalance weighting; see the script's own comments for what each setting controls), scored on 3 time-based windows taken entirely from the training period, so the search never touches the data used for final evaluation below.
+`src/tune.py` searches 40 combinations with Optuna (tree depth, learning rate, regularisation, row and column
+sampling, class weighting). Each combination is scored by average PR-AUC over three time windows that all end
+by step 350 (train up to step 200, 250 or 300; score the next 50 steps), so no row used to choose the settings
+is used to report a result: walk-forward testing starts at step 351 and the holdout at step 491. Early stopping
+inside each window watches the last fifth of that window's training steps, never the rows being scored.
+
+The selected settings (`model/best_params.json`): 500 trees, max_depth 4, learning_rate 0.20,
+subsample 0.60, colsample_bytree 0.81, min_child_weight 8, gamma 1.67, scale_pos_weight 2.14.
 
 ---
 
@@ -107,10 +114,10 @@ transaction at different drain fractions makes the remaining effect exact:
 
 | Drain fraction | Fraud probability |
 |---|---|
-| 10% - 99% | 0.006% (flat) |
-| **100%** | **95.3%** |
+| 10% - 99% | 0.00% to 0.01% |
+| **100%** | **85.0%** |
 
-The probability is flat and near-zero for every fraction up to 99%, then
+The probability stays near zero for every fraction up to 99%, then
 jumps sharply at exactly 100%. That step function, not a smooth
 relationship with how much of the balance moved, is strong evidence that
 PaySim's fraud-generation process creates fraud at (almost) exactly 100%
@@ -128,39 +135,48 @@ to change.
 
 ## Evaluation
 
-Verified by running `src/train.py` end-to-end against the real PaySim CSV (previous versions of this card reported numbers the script had never actually produced: `cv="prefit"` was removed in scikit-learn ≥1.6, so the script could not run at all until fixed; see [README § Results](README.md#results)).
+Produced by running `src/train.py` end to end against the PaySim CSV. Test set: the 132,136 transactions after
+step 490, 2.08% of them fraud.
 
 | Metric | Value | Notes |
 |---|---|---|
-| Precision | **99.85%** | At operating threshold 0.4000, picked dynamically by `pick_best_threshold` on the calibration split |
-| Recall | **99.56%** | After Step 6's raw-balance-column removal, see § Feature Engineering above |
-| F1 | 0.9971 | At operating threshold 0.4000 |
-| PR-AUC | 0.9993 | Primary metric, the one that stays informative under class imbalance |
-| ROC-AUC | 0.9998 * | See caveat below |
-| Brier score | 0.00017 | vs. random-baseline ~0.0204; calibrated on a held-out slice, not the training rows |
+| Precision | **98.42%** | At operating threshold 0.0123, chosen by `pick_best_threshold` on the calibration split |
+| Recall | **99.60%** | |
+| F1 | 0.9901 | |
+| PR-AUC | 0.9996 | Primary metric, the one that stays informative under class imbalance |
+| ROC-AUC | 1.0000 (rounded) * | See caveat below |
+| Brier score | 0.000138 | Calibrated on a held-out slice of the training period, not the training rows |
 
-*A near-1.0 PR-AUC/ROC-AUC is a known property of PaySim once balance-discrepancy features are engineered; treat this as a documented dataset artifact, not evidence of real-world performance. See "Limitations and Risks" below.*
+The threshold is low because the calibrated probabilities are honest about rarity (0.21% fraud in training)
+and a missed fraud is costed at 100 times a false alarm, so the cost-minimising cutoff sits well below 0.5.
 
-### Walk-forward validation (Step 3, `src/validate.py`)
+*A near-1.0 PR-AUC/ROC-AUC is a known property of PaySim once balance-discrepancy features are engineered;
+treat this as a documented dataset artifact, not evidence of real-world performance. See "Limitations and
+Risks" below.*
 
-The table above is one split. `src/validate.py` repeats train → calibrate → test across 4 expanding-window folds spanning the whole dataset, each fold picking its own cost-optimal threshold:
+### Walk-forward validation (`src/validate.py`)
+
+The table above is one split. `src/validate.py` repeats train, calibrate and test across 4 expanding-window
+folds testing steps 351-450, 451-550, 551-650 and 651-743. Each fold chooses its own cost-optimal threshold on
+its calibration split, never on the test rows, and none of the folds overlaps a tuning window.
 
 | Metric | Mean (4 folds) | Std dev |
 |---|---|---|
-| PR-AUC | 0.9986 | ± 0.0013 |
-| ROC-AUC | 0.9999 | ± 0.0002 |
-| Precision | 0.9561 | ± 0.0490 |
-| Recall | 0.9998 | ± 0.0004 |
-| F1 | 0.9768 | ± 0.0262 |
-| Brier score | 0.0002 | ± 0.0001 |
+| PR-AUC | 0.9983 | ± 0.0019 |
+| ROC-AUC | 0.9998 | ± 0.0002 |
+| Precision | 0.9898 | ± 0.0083 |
+| Recall | 0.9973 | ± 0.0022 |
+| F1 | 0.9936 | ± 0.0037 |
+| Brier score | 0.0001 | ± 0.0001 |
 
-These are the corrected model's numbers, after removing the raw balance columns (see § Feature Engineering above). Precision dropped from 0.9954 and its fold variance grew after the fix, which is the cost of no longer letting the model key off "balance hits zero" as a shortcut; recall improved slightly.
+Per-fold thresholds were 0.50, 0.89, 0.019 and 0.017. The cost-optimal cutoff moves a long way from one
+period to the next, so no single fixed threshold is clearly right across all of them. See "Limitations and
+Risks" below.
 
-**Read Precision, Recall and F1 in that table as optimistic.** They were produced by a version of `src/validate.py` that handed each fold's own test labels to `pick_best_threshold`, so the cutoff was chosen against the labels the metrics were then reported on. Under the 100-to-1 cost that drives recall to 1.0 almost by construction, which is why three of four folds sit on exactly 1.0. `validate.py` now picks the threshold on the calibration split, as `train.py` always did; regenerating the table needs the PaySim CSV. PR-AUC, ROC-AUC and Brier are threshold-free and are unaffected, and their stability across folds is the part of this table that still stands.
-
-**Folds 1 and 2 are also two of the three windows `src/tune.py` selected the hyperparameters on** (351-450 and 451-550). Folds 3 and 4 are clean of it. `train.py`'s own test set overlaps the third tuning window on steps 491-550.
-
-The remaining catch, unchanged: the per-fold cost-optimal threshold varies a lot across folds, so no single fixed threshold is clearly correct across all of them. See "Limitations and Risks" below.
+**Earlier versions of this card** reported walk-forward precision and recall from a version of
+`src/validate.py` that chose each fold's threshold on that fold's own test labels (three folds showed recall
+of exactly 1.0), and hyperparameters tuned on windows that overlapped two folds and the holdout. Both are
+fixed; the figures above replace them, and the holdout precision moved from 99.85% to 98.42% as a result.
 
 ---
 
@@ -169,20 +185,20 @@ The remaining catch, unchanged: the per-fold cost-optimal threshold varies a lot
 - **PaySim is a simulator.** Generalisation to real data is unverified and should be assumed poor without retraining.
 - **Drift monitoring is simulated, not real.** `src/monitoring.py` shows what PSI monitoring would look like using PaySim's own time horizon as a stand-in for "time passing in production"; there's no real production traffic behind it yet.
 - **Threshold is static per fold.** Each walk-forward fold in `src/validate.py` picks its own cost-optimal threshold; the shipped model still uses one fixed threshold. Different fraud rates require a different operating point.
-- **The headline numbers are not reproducible across core counts.** `n_jobs` is `-1` and the tuned `subsample` is 0.84. XGBoost draws its row-subsample mask from per-thread RNG streams, so a fixed `random_state` does not make the fit thread-invariant when rows are subsampled. Measured on a 60,000-row synthetic frame: identical at `subsample=1.0`, up to 0.093 apart in predicted probability between one thread and four at `subsample=0.84`. Column subsampling does not cause it. Anyone re-running `make train` on different hardware should expect close but not equal numbers.
+- **Thread count is part of the model.** XGBoost draws its row-subsample mask from per-thread RNG streams, so a fixed `random_state` alone does not make a fit with `subsample` below 1.0 thread-invariant (measured on a 60,000-row synthetic frame: up to 0.093 apart in predicted probability between one thread and four at `subsample=0.84`). `n_jobs` is therefore fixed at 4 in `train.py`, `validate.py` and `tune.py`, so a re-run reproduces these figures; changing it will move them slightly.
 - **The model barely notices whether the recipient actually received the money.** Pre-deployment scenario testing swept how much of a fully-drained account's balance actually reached the recipient, holding everything else fixed: a $10,000 full-balance TRANSFER, sender drained to zero, **recipient holding $2,000 beforehand**. That opening recipient balance is part of the scenario, not a detail, because the score moves with it; a table that omits it cannot be reproduced.
 
   | % of debited amount credited to recipient | Fraud probability |
   |---|---|
-  | 0% (money fully vanishes, classic mule fraud) | 94.77% |
-  | 25% / 50% / 75% (partial diversion) | 94.77% (bit-for-bit identical) |
-  | 100% (fully consistent, nothing missing) | 76.00% |
+  | 0% (money fully vanishes, classic mule fraud) | 95.73% |
+  | 25% / 50% / 75% (partial diversion) | 95.73% (identical) |
+  | 100% (fully consistent, nothing missing) | 85.00% |
 
   `src/scenarios.py` regenerates this from the committed model and writes `dashboard/data/scenario_table.json`. It needs no dataset: `make scenarios`.
 
-  All four "money went missing" cases score *identically*: `dest_balance_discrepancy` only accounts for ~4% of SHAP importance (see `src/explain.py` output), so it barely moves the score even when it's the clearest fraud signal on the page. The flip side of the drain-ratio finding above: this model is a **sender-side full-drain detector**, not a general money-laundering detector. A fraud pattern that partially skims an account *without* fully draining it (e.g. debits 50% of a balance and the recipient gets none of it) scores near **0%**, confirmed directly and reproduced by the same script: a $5,000 partial drain from a $10,000 balance with $0 reaching the recipient scores 0.0061%, indistinguishable from a routine legitimate transaction.
+  All four "money went missing" cases score *identically*: `dest_balance_discrepancy` accounts for only 6% of mean absolute SHAP value (see `src/explain.py` output), so it barely moves the score even when it's the clearest fraud signal on the page. The flip side of the drain-ratio finding above: this model is a **sender-side full-drain detector**, not a general money-laundering detector. A fraud pattern that partially skims an account *without* fully draining it (e.g. debits 50% of a balance and the recipient gets none of it) scores near **0%**, confirmed directly and reproduced by the same script: a $5,000 partial drain from a $10,000 balance with $0 reaching the recipient scores 0.0071%, indistinguishable from a routine legitimate transaction.
 
-  **A rule-based fix for this was tried and rejected; document this before re-attempting it.** The obvious patch is a safety-net rule layered on top of the ML score: flag any transaction where `dest_balance_discrepancy / amount` is large (the recipient got a lot less than they should have), regardless of what the model says. Tested properly (not just on a convenient sample):
+  **A rule-based fix for this was tried and rejected; document this before re-attempting it.** (Measured on an earlier model version; the conclusion does not depend on the model's exact scores.) The obvious patch is a safety-net rule layered on top of the ML score: flag any transaction where `dest_balance_discrepancy / amount` is large (the recipient got a lot less than they should have), regardless of what the model says. Tested properly (not just on a convenient sample):
 
   | Evaluation set | Metric | ML only | ML + shortfall rule |
   |---|---|---|---|
