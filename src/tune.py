@@ -17,20 +17,11 @@ How we test each combination of settings ("trial"):
 Optuna (a hyperparameter search library) tries ~40 different combinations
 and remembers which one scored highest.
 
-Where this overlaps with the reporting splits, stated plainly rather than
-claimed away. Two of the three tuning windows, 351-450 and 451-550, are also
-walk-forward folds 1 and 2 in src/validate.py, and train.py splits at step 490
-so 491-550 of its test set sits inside the third tuning window, about a quarter
-of its test rows. So the hyperparameters here were selected partly on rows that
-are later used to report results. Folds 3 and 4 (551-650 and 651-743) are
-clean. Fixing it properly means moving every tuning window below step 350 and
-re-running both tune and train; nothing here is corrected by editing a comment.
-
-A second, smaller overlap inside this script: line 104 passes the window's own
-test rows as XGBoost's eval_set with early_stopping_rounds set, so the number
-of boosting rounds for a trial is chosen on the rows that trial is then scored
-on. That biases the comparison between trials. An inner holdout inside each
-window, or a fixed n_estimators, would remove it.
+Every tuning window ends at or before step 350, so no row used to choose the
+hyperparameters is ever used to report a result: the walk-forward folds in
+src/validate.py test on steps 351-743 and train.py tests on 491-743. Within each
+window, early stopping watches an inner validation slice (the last fifth of the
+window's training steps), never the rows the trial is scored on.
 
 Usage
 -----
@@ -59,17 +50,14 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 optuna.logging.set_verbosity(optuna.logging.WARNING)  # keep Optuna's own logs quiet, we log ourselves below
 
-# Three small "before -> after" windows used only for tuning. All of them sit
-# inside the training period (step <= 650), but two of them are also reporting
-# windows elsewhere: 351-450 and 451-550 are walk-forward folds 1 and 2 in
-# validate.py, and 491-550 is part of train.py's test set. See the module
-# docstring. To remove the overlap entirely these all have to end at or before
-# step 350, which means re-tuning.
+# Three small "before -> after" windows used only for tuning, all ending at or
+# before step 350, below every reporting window (see the module docstring).
 TUNING_SPLITS = [
-    (250, 350),  # train on steps <= 250, score on steps 251-350
-    (350, 450),
-    (450, 550),
+    (200, 250),  # train on steps <= 200, score on steps 201-250
+    (250, 300),
+    (300, 350),
 ]
+INNER_VALIDATION_SHARE = 0.2  # last fifth of each window's training steps drives early stopping
 
 BEST_PARAMS_PATH = Path(__file__).parent.parent / "model" / "best_params.json"
 
@@ -98,7 +86,7 @@ def suggest_hyperparameters(trial: optuna.Trial) -> dict:
         "scale_pos_weight": trial.suggest_float("scale_pos_weight", 2, 30, log=True),
         "eval_metric": "aucpr",
         "random_state": 42,
-        "n_jobs": -1,
+        "n_jobs": 4,  # fixed, so row subsampling reproduces on any machine
         "verbosity": 0,
         "early_stopping_rounds": 30,
     }
@@ -114,11 +102,15 @@ def score_one_trial(params: dict, df) -> float:
         if test_window["isFraud"].sum() == 0:
             continue  # skip a window with no fraud cases, nothing to score
 
-        X_train, y_train = train_window[FEATURE_COLS], train_window["isFraud"]
+        cut = train_end_step - int(train_end_step * INNER_VALIDATION_SHARE)
+        fit_part = train_window[train_window["step"] <= cut]
+        val_part = train_window[train_window["step"] > cut]
+        X_fit, y_fit = fit_part[FEATURE_COLS], fit_part["isFraud"]
+        X_val, y_val = val_part[FEATURE_COLS], val_part["isFraud"]
         X_test, y_test = test_window[FEATURE_COLS], test_window["isFraud"]
 
         model = XGBClassifier(**params)
-        model.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=False)
+        model.fit(X_fit, y_fit, eval_set=[(X_val, y_val)], verbose=False)
 
         predicted_probs = model.predict_proba(X_test)[:, 1]
         window_scores.append(average_precision_score(y_test, predicted_probs))

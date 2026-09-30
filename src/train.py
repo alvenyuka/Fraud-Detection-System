@@ -81,7 +81,7 @@ DEFAULT_XGB_PARAMS = {
     "scale_pos_weight": 10,
     "eval_metric": "aucpr",
     "random_state": 42,
-    "n_jobs": -1,
+    "n_jobs": 4,  # fixed, so row subsampling reproduces on any machine
     "verbosity": 0,
 }
 
