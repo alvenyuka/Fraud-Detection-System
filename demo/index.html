@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fraud Detection System | Alven Yuka</title>
+<meta name="description" content="XGBoost fraud classifier on 6.3M PaySim mobile-money transactions. Stops 99.99% of holdout fraud value at 98.4% precision, walk-forward validated.">
+<style>
+  :root{
+    --bg:#0b0f19; --bg2:#111827; --card:#151b2b; --border:#232c42;
+    --text:#e6e9f2; --muted:#9aa4bf; --accent:#7c5cff; --accent2:#22d3ee;
+    --good:#34d399; --warn:#fbbf24;
+  }
+  @media (prefers-color-scheme: light){
+    :root{ --bg:#f7f8fc; --bg2:#ffffff; --card:#ffffff; --border:#e3e6f0;
+      --text:#131a2b; --muted:#5b6478; --accent:#6d3bff; --accent2:#0891b2; }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0b0f19; --bg2:#111827; --card:#151b2b; --border:#232c42;
+    --text:#e6e9f2; --muted:#9aa4bf; --accent:#7c5cff; --accent2:#22d3ee;
+  }
+  :root[data-theme="light"]{
+    --bg:#f7f8fc; --bg2:#ffffff; --card:#ffffff; --border:#e3e6f0;
+    --text:#131a2b; --muted:#5b6478; --accent:#6d3bff; --accent2:#0891b2;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    overflow-x:hidden;}
+  a{color:var(--accent2);}
+  .wrap{max-width:980px;margin:0 auto;padding:0 24px;}
+  header.hero{padding:72px 0 48px;text-align:center;background:
+    radial-gradient(circle at 50% 0%, rgba(124,92,255,0.18), transparent 60%);}
+  .kicker{color:var(--accent2);font-size:13px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;margin-bottom:14px;}
+  h1{font-size:clamp(28px,4.2vw,44px);line-height:1.15;margin:0 0 16px;font-weight:800;}
+  .tagline{color:var(--muted);font-size:clamp(15px,2vw,18px);max-width:640px;margin:0 auto 30px;line-height:1.6;}
+  .badges{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-bottom:36px;}
+  .badge{background:var(--card);border:1px solid var(--border);border-radius:999px;padding:8px 16px;font-size:13px;font-weight:600;}
+  .badge b{color:var(--good);}
+  .cta-row{display:flex;flex-wrap:wrap;gap:14px;justify-content:center;}
+  .btn{display:inline-flex;align-items:center;gap:8px;padding:13px 24px;border-radius:10px;font-weight:700;
+    font-size:14px;text-decoration:none;border:1px solid transparent;transition:transform .15s ease;}
+  .btn:hover{transform:translateY(-2px);}
+  .btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;}
+  .btn-secondary{background:var(--card);border-color:var(--border);color:var(--text);}
+  .btn-note{display:block;color:var(--muted);font-size:12px;margin-top:8px;}
+
+  section{padding:56px 0;border-top:1px solid var(--border);}
+  h2{font-size:clamp(20px,2.6vw,26px);margin:0 0 20px;font-weight:800;}
+  p.lead{color:var(--muted);font-size:15.5px;line-height:1.75;max-width:760px;}
+
+  .steps{display:grid;gap:14px;margin-top:26px;}
+  .step{display:grid;grid-template-columns:40px 1fr;gap:16px;background:var(--card);
+    border:1px solid var(--border);border-radius:12px;padding:16px 18px;}
+  .step .n{width:32px;height:32px;border-radius:8px;background:var(--bg2);border:1px solid var(--border);
+    display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--accent2);font-size:14px;}
+  .step h3{margin:0 0 4px;font-size:15px;}
+  .step p{margin:0;color:var(--muted);font-size:13.5px;line-height:1.6;}
+  .step code{background:var(--bg2);padding:1px 6px;border-radius:4px;font-size:12px;border:1px solid var(--border);}
+
+  .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;margin:26px 0 40px;}
+  .metric{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px;text-align:center;}
+  .metric .v{font-size:26px;font-weight:800;color:var(--good);}
+  .metric .k{color:var(--muted);font-size:12px;margin-top:4px;text-transform:uppercase;letter-spacing:.06em;}
+
+  .gallery{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;}
+  .gallery figure{margin:0;background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+  .gallery img{width:100%;display:block;background:#fff;}
+  .gallery figcaption{padding:10px 14px;color:var(--muted);font-size:12.5px;border-top:1px solid var(--border);}
+  @media (max-width:680px){ .gallery{grid-template-columns:1fr;} }
+
+  .callout{background:var(--card);border:1px solid var(--border);border-left:3px solid var(--warn);
+    border-radius:10px;padding:18px 20px;margin-top:24px;}
+  .callout h3{margin:0 0 8px;font-size:14px;color:var(--warn);}
+  .callout p{margin:0;color:var(--muted);font-size:13.5px;line-height:1.7;}
+
+  .stack{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px;}
+  .chip{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12.5px;color:var(--muted);}
+
+  footer{padding:44px 0 60px;text-align:center;color:var(--muted);font-size:13.5px;}
+  footer .links{display:flex;gap:18px;justify-content:center;flex-wrap:wrap;margin-bottom:14px;}
+  footer .links a{color:var(--text);font-weight:600;text-decoration:none;}
+  footer .links a:hover{color:var(--accent2);}
+
+  .score-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px;margin-top:24px;max-width:640px;}
+  .score-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;}
+  .score-grid label{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--muted);}
+  .score-grid input{background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text);
+    padding:10px 12px;font-size:14px;}
+  @media (max-width:520px){ .score-grid{grid-template-columns:1fr;} }
+  .score-result{display:none;margin-top:20px;padding-top:20px;border-top:1px solid var(--border);}
+  .score-result.visible{display:block;}
+  .score-prob{font-size:32px;font-weight:800;}
+  .score-flag{display:inline-block;margin-top:8px;padding:6px 14px;border-radius:999px;font-size:13px;font-weight:700;}
+  .flag-bad{background:rgba(230,57,70,0.15);color:#ff6b76;}
+  .flag-good{background:rgba(52,211,153,0.15);color:var(--good);}
+  .score-note{margin-top:14px;padding:12px 14px;background:var(--bg2);border-left:3px solid var(--warn);
+    border-radius:8px;font-size:12.5px;color:var(--muted);line-height:1.6;}
+  .score-error{display:none;margin-top:16px;color:#ff6b76;font-size:13px;}
+  .score-error.visible{display:block;}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="kicker">Portfolio Case Study</div>
+    <h1>Mobile-money fraud detection,<br>evaluated the way a risk team would</h1>
+    <p class="tagline">XGBoost classifier on 6.3M simulated PaySim mobile-money transactions. Hyperparameters tuned
+      only on earlier data, a time-based holdout, walk-forward validation across 4 later windows, calibrated
+      probabilities and a cost-based threshold. It stops 99.99% of holdout fraud value, against 1.1% for the
+      simulator's built-in rule.</p>
+    <div class="badges">
+      <span class="badge">Fraud value stopped <b>99.99%</b></span>
+      <span class="badge">Recall <b>99.6%</b></span>
+      <span class="badge">Precision <b>98.4%</b></span>
+      <span class="badge">Walk-forward PR-AUC <b>0.998</b></span>
+    </div>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="#score">Score a transaction, live</a>
+      <a class="btn btn-secondary" href="https://github.com/alvenyuka/Fraud-Detection-System" target="_blank" rel="noopener">View the code on GitHub</a>
+    </div>
+  </div>
+</header>
+
+<section id="score">
+  <div class="wrap">
+    <h2>Score a transaction, live</h2>
+    <p class="lead">This runs the actual shipped model. The trained trees and calibration curve are
+      re-implemented in pure Python for this always-on demo (see <code>src/export_model_json.py</code> and
+      <code>api/score.py</code>), checked against the scikit-learn/XGBoost model on 20,000 fixed-seed transactions, agreeing to within
+      floating-point precision. Not a mock, not a lookup table. It loads the current model from the repository,
+      so it always scores with the latest trained version.</p>
+    <div class="score-card">
+      <div class="score-grid">
+        <label>Amount<input id="f-amount" type="number" value="181000" step="1000"></label>
+        <label>Sender's balance before<input id="f-old-orig" type="number" value="181000" step="1000"></label>
+        <label>Sender's balance after<input id="f-new-orig" type="number" value="0" step="1000"></label>
+        <label>Recipient's balance before<input id="f-old-dest" type="number" value="0" step="1000"></label>
+        <label>Recipient's balance after<input id="f-new-dest" type="number" value="0" step="1000"></label>
+      </div>
+      <button id="score-btn" class="btn btn-primary" type="button">Score this transaction</button>
+      <div id="score-result" class="score-result"></div>
+      <div id="score-error" class="score-error"></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Why this is a precision problem, not an accuracy problem</h2>
+    <p class="lead">PaySim's fraud rate is 0.13%. A model that predicts "not fraud" every single time scores 99.87%
+      accuracy and catches nothing. Fraud-ops workflows freeze customer funds on a flag, so false positives carry
+      real trust and regulatory cost. This project measures precision and recall on a strict time-based holdout, chooses the alert threshold from
+      the cost of each kind of mistake, and puts the result in money: the value of fraud stopped and the number of
+      honest customers frozen. PaySim is a common tutorial dataset; the contribution here isn't
+      the dataset choice, it's the evaluation rigour: time-based split, calibration, cost-sensitive thresholds, and
+      a five-model comparison on identical pipelines.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>How it was built: seven stages, each answering one open question</h2>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><div><h3>Baseline model</h3><p>Can a model tell fraud apart from legitimate transactions at all? (<code>src/train.py</code>)</p></div></div>
+      <div class="step"><div class="n">2</div><div><h3>Hyperparameter tuning</h3><p>40 Optuna trials, scored only on windows that end before every reporting window, so no tuning row is used to report a result. (<code>src/tune.py</code>)</p></div></div>
+      <div class="step"><div class="n">3</div><div><h3>Walk-forward validation</h3><p>Does it hold up on more than one train/test split? (<code>src/validate.py</code>)</p></div></div>
+      <div class="step"><div class="n">4</div><div><h3>Drift monitoring</h3><p>How would we know if the model started drifting in production? (<code>src/monitoring.py</code>)</p></div></div>
+      <div class="step"><div class="n">5</div><div><h3>Live dashboard</h3><p>How does someone without Python actually use this? (<code>dashboard/app.py</code>)</p></div></div>
+      <div class="step"><div class="n">6</div><div><h3>Feature fix</h3><p>Live-testing the dashboard found the model flagging legitimate account closures as 100% fraud, traced to raw balance columns that were then removed from the model's inputs.</p></div></div>
+      <div class="step"><div class="n">7</div><div><h3>Diagnostics</h3><p>Does one feature dominate the model's decisions, and where's the real precision/recall/cost trade-off? (<code>src/explain.py</code>)</p></div></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Results: pipeline output on the holdout</h2>
+    <p class="lead">Output of <code>src/train.py</code>, <code>src/validate.py</code> and <code>src/business_impact.py</code>
+      run end to end against the PaySim CSV, on the 132,136 transactions after simulated hour 490 (2,754 frauds).
+      An earlier version reported 99.85% precision from hyperparameters tuned on windows that overlapped the test
+      data; re-tuning on earlier data only gives the figures below.</p>
+    <div class="metrics">
+      <div class="metric"><div class="v">99.99%</div><div class="k">Fraud value stopped</div></div>
+      <div class="metric"><div class="v">2,743 / 2,754</div><div class="k">Frauds caught</div></div>
+      <div class="metric"><div class="v">98.4%</div><div class="k">Precision (44 false alarms)</div></div>
+      <div class="metric"><div class="v">0.9996</div><div class="k">PR-AUC</div></div>
+      <div class="metric"><div class="v">0.998</div><div class="k">Walk-forward PR-AUC</div></div>
+      <div class="metric"><div class="v">0.0123</div><div class="k">Cost-optimal threshold</div></div>
+    </div>
+    <div class="gallery">
+      <figure><img src="https://raw.githubusercontent.com/alvenyuka/Fraud-Detection-System/main/figures/fraud_value_stopped.png" alt="Fraud value on the holdout by screening method: the built-in rule stops 1.1%, the model 99.99%" loading="lazy"><figcaption>Fraud value stopped: model against the simulator's built-in rule</figcaption></figure>
+      <figure><img src="https://raw.githubusercontent.com/alvenyuka/Fraud-Detection-System/main/figures/threshold_tradeoff.png" alt="Precision and recall by threshold, and the four walk-forward folds" loading="lazy"><figcaption>Precision and recall by threshold, and the four walk-forward folds</figcaption></figure>
+      <figure><img src="https://raw.githubusercontent.com/alvenyuka/Fraud-Detection-System/main/figures/balance_discrepancy_fingerprint.png" alt="Balance-field correlations for genuine and fraudulent transactions" loading="lazy"><figcaption>Balance-discrepancy fingerprint: fraud vs. legitimate transactions</figcaption></figure>
+      <figure><img src="https://raw.githubusercontent.com/alvenyuka/Fraud-Detection-System/main/figures/dispersion_over_time.jpg" alt="Transaction dispersion over the simulated time horizon" loading="lazy"><figcaption>Fraud and genuine transactions across the simulated month</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>What this doesn't claim</h2>
+    <div class="callout">
+      <h3>Limitation 1: the threshold is a business choice, and it drifts</h3>
+      <p>The cost-optimal cut-off (0.0123) catches one more fraud than a 0.5 cut-off but freezes 41 more honest
+        customers, and it ranged from 0.017 to 0.89 across the walk-forward folds. The near-perfect PR-AUC
+        hides that no single fixed threshold is clearly "correct" across the whole time horizon. A real deployment
+        would need to revisit it periodically.</p>
+    </div>
+    <div class="callout">
+      <h3>Limitation 2: destination-balance blind spot</h3>
+      <p>The model can't see whether the destination account's balance was updated consistently, because PaySim's
+        CASH_OUT type doesn't strictly enforce destination-side accounting. A rule-based patch for this was tested
+        and rejected: on an earlier model version it produced 44,996 false alarms on the training split, up from 136. See <code>MODEL_CARD.md</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Tech stack</h2>
+    <div class="stack">
+      <span class="chip">Python 3.10+</span><span class="chip">XGBoost</span><span class="chip">scikit-learn</span>
+      <span class="chip">SHAP</span><span class="chip">Streamlit</span>
+      <span class="chip">Optuna</span><span class="chip">joblib</span>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="links">
+      <a href="https://github.com/alvenyuka/Fraud-Detection-System" target="_blank" rel="noopener">GitHub repo</a>
+      <a href="https://www.linkedin.com/in/alven-yuka-610b78174/" target="_blank" rel="noopener">LinkedIn</a>
+      <a href="mailto:alvenyuka2@gmail.com">alvenyuka2@gmail.com</a>
+    </div>
+    Built by Alven Yuka, CPA Finalist. MIT licensed.
+  </div>
+</footer>
+
+<script>
+document.getElementById('score-btn').addEventListener('click', async function () {
+  var payload = {
+    amount: parseFloat(document.getElementById('f-amount').value),
+    oldbalanceOrg: parseFloat(document.getElementById('f-old-orig').value),
+    newbalanceOrig: parseFloat(document.getElementById('f-new-orig').value),
+    oldbalanceDest: parseFloat(document.getElementById('f-old-dest').value),
+    newbalanceDest: parseFloat(document.getElementById('f-new-dest').value)
+  };
+  var resultEl = document.getElementById('score-result');
+  var errorEl = document.getElementById('score-error');
+  resultEl.classList.remove('visible');
+  errorEl.classList.remove('visible');
+  try {
+    var res = await fetch('/api/score', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    var data = await res.json();
+    if (!res.ok) { throw new Error(data.error || 'Scoring failed'); }
+    var pct = (data.fraud_probability * 100).toFixed(4);
+    var noteHtml = '';
+    if (data.orig_drain_ratio >= 0.999) {
+      noteHtml = '<div class="score-note">This transaction drains close to 100% of the sender\'s balance, ' +
+        'which scores high in this model almost regardless of anything else. That is a documented property ' +
+        'of PaySim\'s fraud pattern, not a bug. See MODEL_CARD.md.</div>';
+    }
+    var flagClass = data.flagged ? 'flag-bad' : 'flag-good';
+    var flagText = data.flagged ? 'Flagged as fraud' : 'Looks legitimate';
+    resultEl.innerHTML =
+      '<div class="score-prob">' + pct + '%</div>' +
+      '<span class="score-flag ' + flagClass + '">' + flagText + '</span>' + noteHtml;
+    resultEl.classList.add('visible');
+  } catch (err) {
+    errorEl.textContent = err.message;
+    errorEl.classList.add('visible');
+  }
+});
+</script>
+
+</body>
+</html>
