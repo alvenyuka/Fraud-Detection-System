@@ -1,13 +1,17 @@
-# Minimal dependencies for the live dashboard only. The full requirements.txt
-# at the repo root also installs training/tuning/notebook tools (Jupyter,
-# Optuna, LightGBM, etc.) that the deployed dashboard never imports. Streamlit
-# Cloud's free tier has a tight memory budget, so keeping this list lean
-# matters for a successful cold start.
-numpy<2.3
-pandas>=2.0
-scikit-learn>=1.6
-xgboost>=2.0
-joblib>=1.3
-shap>=0.43
-plotly>=5.17
-streamlit>=1.38
+# Minimal dependencies for the live dashboard only. The full requirements.txt at
+# the repo root also installs tuning and notebook tools (Optuna, LightGBM,
+# nbconvert) that the deployed dashboard never imports. Streamlit Cloud's free
+# tier has a tight memory budget, so this list stays lean.
+#
+# The model libraries are pinned to the exact versions that wrote
+# model/xgb_fraud_model.pkl, so the dashboard scores with the same code that
+# trained it. Keep them in step with requirements.txt.
+numpy==2.4.6
+pandas==3.0.3
+scipy==1.17.1
+scikit-learn==1.8.0
+xgboost==3.3.0
+joblib==1.5.3
+shap==0.51.0
+plotly==6.9.0
+streamlit==1.59.1
