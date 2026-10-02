@@ -125,8 +125,10 @@ cut-off matters only where it crosses one of them: above 0.88, recall drops to 9
   Removing those columns did not remove the effect: `orig_drain_ratio` still encodes a full drain, and the
   shipped model scores a fully consistent full drain at 90.2% and a 12-unit one at 88.5%, both flagged
   (`dashboard/data/scenario_table.json`). The model card explains why this is a property of PaySim's labels.
-- **The class weight is a hyperparameter, not the class ratio.** Weighting fraud by the raw ratio (336) made a
-  simple XGBoost fail on later data (PR-AUC 0.48 in the notebook); tuning on earlier data chose 2.14.
+- **A near-perfect score here says more about the simulator than the model.** In the exploratory notebook a
+  random forest and a stacking ensemble both reach PR-AUC 1.0000 on the holdout and a class-weighted XGBoost
+  0.9989, because PaySim's fraud labels follow almost directly from the balance features. The evaluation
+  method, not the score, is what carries over to real data.
 - **The cut-off drifts.** The cost-optimal threshold ranged from 0.021 to 1.00 across the walk-forward folds
   (coefficient of variation 0.57), and `orig_drain_ratio` reached a PSI of 0.76 against the training window in
   the final hours, so a deployment would review the threshold on a schedule.

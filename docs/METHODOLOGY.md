@@ -135,14 +135,14 @@ below it needs the 470MB PaySim CSV, and the notebook is the heavy one:
 | `make train` | yes | about a minute |
 | `make tune` | yes | 40 trials; the 2026-10-02 run took 4 hours on a machine shared with other jobs |
 | `make validate` | yes | under two minutes, four walk-forward folds |
-| the notebook, end to end | yes | 45 to 90 minutes, and roughly 6 to 8GB of free memory |
+| the notebook, end to end | yes | 74 minutes for the stored run, and roughly 6 to 8GB of free memory |
 
 The notebook is heavier than the pipeline because it fits five models rather
 than one, including a stacking ensemble that refits three base learners across
 three cross-validation folds. Thread counts are bounded by `N_JOBS` in the
 config cell for that reason: `n_jobs=-1` nests inside the stack, and each
 worker takes its own copy of a 2.6-million-row frame, so the peak is set by how
-many are alive at once rather than by the data. Raise `N_JOBS` if you have the
+many are alive at once rather than by the data. Random forests use `RF_JOBS` (4) threads, which share one copy of the data. Raise `N_JOBS` if you have the
 headroom.
 
 ## Features
@@ -262,26 +262,26 @@ The cost-optimal threshold swings from fold to fold (min 0.0210, max 1.0000, coe
 ### Exploratory model comparison (from the notebook, not the shipped pipeline)
 
 The notebook compares five models on its own raw-plus-error-balance features, on the same time split
-(train to step 490, test after it). From its full run on 30 September 2026:
+(train to step 490, test after it). From its full run finished on 3 October 2026:
 
 | Model | PR-AUC | ROC-AUC | Recall @ 99% precision |
 |---|---|---|---|
-| Stacking ensemble | 1.0000 | 1.0000 | 1.0000 |
 | Random forest | 1.0000 | 1.0000 | 1.0000 |
+| Stacking ensemble | 1.0000 | 1.0000 | 1.0000 |
 | XGBoost + SMOTE (ablation) | 0.9995 | 1.0000 | 0.9949 |
+| XGBoost, class-weighted (482, from the training labels) | 0.9989 | 0.9990 | 0.9989 |
 | Logistic regression | 0.7901 | 0.9795 | 0.4503 |
-| XGBoost, `scale_pos_weight` 336 | 0.4771 | 0.9855 | 0.0000 |
-| LightGBM, default settings | 0.0357 | 0.7041 | 0.0000 |
+| LightGBM, class-weighted (482), min_child_samples 5 | 0.0338 | 0.6956 | 0.0000 |
 
-The notebook's earlier stored outputs showed its XGBoost at 0.9987; they predated the removal of `step` (the
-split variable) from its features. Without `step`, a shallow XGBoost weighted by the raw class ratio (336)
-over-fits the few fraud rows and assigns probability 1.0 to legitimate transactions on the later window, while
-the same model trained on SMOTE-balanced data reaches 0.9995. The shipped pipeline treats the class weight as
-a hyperparameter: `src/tune.py`, choosing only on earlier data, picked 2.14. XGBoost is still the shipped model
+The previous stored run (30 September 2026) computed the class weight over training and test labels together
+(336) and showed this XGBoost at 0.4771. With the weight taken from the training labels only, and the thread
+count no longer hard-coded, it reaches 0.9989, so the earlier explanation of that failure is withdrawn. SMOTE
+against class weighting is now a 0.06-point difference. The shipped pipeline treats the class weight as a
+hyperparameter: `src/tune.py`, choosing only on earlier data, picked 2.14. XGBoost is still the shipped model
 because, with tuned settings and the engineered balance features, it matches the ensembles' ranking (holdout
-PR-AUC 0.9996) as a single, explainable model, and the ensembles' literal 1.0000 on a simulator is more likely
-a sign of PaySim's determinism than of a better model. LightGBM's `num_leaves=31` default over-fits the
-training period's roughly 5,500 fraud rows in the same way.
+PR-AUC 0.9984) as a single, explainable model, and the ensembles' literal 1.0000 on a simulator is more likely
+a sign of PaySim's determinism than of a better model. LightGBM collapses on the later window with these
+settings; the notebook does not isolate which setting causes it.
 
 The notebook renders the precision-recall scoreboard, calibration, permutation-importance and SHAP charts for these models inline.
 
