@@ -1,22 +1,22 @@
 [
   {
-    "feature": "orig_drain_ratio",
-    "importance_pct": 39.99
+    "feature": "orig_balance_discrepancy",
+    "importance_pct": 51.78
   },
   {
-    "feature": "orig_balance_discrepancy",
-    "importance_pct": 23.05
+    "feature": "orig_drain_ratio",
+    "importance_pct": 25.08
   },
   {
     "feature": "dest_amount_ratio",
-    "importance_pct": 20.48
+    "importance_pct": 14.74
   },
   {
     "feature": "amount",
-    "importance_pct": 10.26
+    "importance_pct": 4.48
   },
   {
     "feature": "dest_balance_discrepancy",
-    "importance_pct": 6.22
+    "importance_pct": 3.93
   }
 ]

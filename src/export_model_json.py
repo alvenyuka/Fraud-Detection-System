@@ -13,9 +13,10 @@ Parity with the real model is enforced by tests/test_export_parity.py, which
 scores a fixed-seed sample of 20,000 transactions through both this export
 (via api/score.py's pure-Python path) and the committed pickle, and asserts a
 bound that has actually been measured rather than one quoted from memory. The
-measured worst case is about 1.9e-06 in absolute probability, on a handful of
+measured worst case for the model trained on 2026-10-02 is about 6.6e-08 in
+absolute probability, on a handful of
 rows that land on a tree split threshold or an isotonic breakpoint; the mean
-disagreement is around 6e-10.
+disagreement is around 1.4e-10.
 
 Usage
 -----
@@ -69,6 +70,9 @@ def export() -> None:
         "isotonic_x": iso.X_thresholds_.tolist(),
         "isotonic_y": iso.y_thresholds_.tolist(),
         "operating_threshold": artifact["operating_threshold"],
+        # Provenance only; api/score.py does not read these.
+        "trained_on": artifact.get("trained_on"),
+        "versions": artifact.get("versions"),
     }
 
     OUT_PATH.write_text(json.dumps(export_data))

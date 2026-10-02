@@ -16,18 +16,11 @@ real evidence the model is stable over time, not a one-off result.
     Fold 3: train on steps  1-550, test on 551-650
     Fold 4: train on steps  1-650, test on 651-743
 
-Two things a reader should know before trusting the numbers this writes.
-
-First, folds 1 and 2 (351-450 and 451-550) are the same two windows tune.py
-scored its Optuna trials on, so the hyperparameters those folds run with were
-selected to maximise PR-AUC on exactly those rows. Folds 3 and 4 are clean of
-that. Moving the tuning windows below step 350 would fix it and would mean
-re-tuning and re-training.
-
-Second, the artifacts currently committed in dashboard/data/ were produced
-before the threshold-selection fix in run_one_fold below, so their Precision,
-Recall and F1 are optimistic. See the comment there, and the walk-forward
-section of the README.
+Tuning windows end by step 350 (src/config.py), so no fold overlaps them.
+Each fold calibrates and picks its threshold on the latest fifth of its own
+training steps, never on its test rows. The spread of those thresholds across
+folds is written to metrics_summary.json as threshold min, max and coefficient
+of variation.
 
 It also saves the small chart-ready files the dashboard reads:
 dashboard/data/walk_forward_results.csv, pr_curve.csv, calibration_curve.csv,
@@ -58,11 +51,17 @@ from sklearn.metrics import (
     recall_score,
     roc_auc_score,
 )
-from sklearn.model_selection import train_test_split
 from xgboost import XGBClassifier
 
 sys.path.insert(0, str(Path(__file__).parent))
-from features import FEATURE_COLS, engineer_features, load_and_filter, pick_best_threshold  # noqa: E402
+from config import FOLDS  # noqa: E402
+from features import (  # noqa: E402
+    FEATURE_COLS,
+    engineer_features,
+    load_and_filter,
+    pick_best_threshold,
+    split_off_latest_steps,
+)
 from train import load_xgb_params  # noqa: E402
 
 logging.basicConfig(
@@ -72,13 +71,6 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-FOLDS = [
-    (350, 450),
-    (450, 550),
-    (550, 650),
-    (650, 743),
-]
-
 DASHBOARD_DATA_DIR = Path(__file__).parent.parent / "dashboard" / "data"
 
 
@@ -87,12 +79,10 @@ def run_one_fold(df: pd.DataFrame, train_end_step: int, test_end_step: int, xgb_
     train_period = df[df["step"] <= train_end_step]
     test_period = df[(df["step"] > train_end_step) & (df["step"] <= test_end_step)]
 
-    # Same calibration approach as train.py: hold out part of the training
-    # data so the probability calibration step isn't graded on data the
-    # model already memorised.
-    fit_rows, calibration_rows = train_test_split(
-        train_period, test_size=0.2, stratify=train_period["isFraud"], random_state=42
-    )
+    # Same calibration approach as train.py: the latest fifth of the training
+    # steps is held out, so calibration isn't graded on rows the model
+    # already memorised and sits next in time to the test window.
+    fit_rows, calibration_rows = split_off_latest_steps(train_period)
 
     X_fit, y_fit = fit_rows[FEATURE_COLS], fit_rows["isFraud"]
     X_calibration, y_calibration = calibration_rows[FEATURE_COLS], calibration_rows["isFraud"]
@@ -108,13 +98,8 @@ def run_one_fold(df: pd.DataFrame, train_end_step: int, test_end_step: int, xgb_
     calibrated_model.fit(X_calibration, y_calibration)
 
     # Pick the threshold on the calibration split, exactly as train.py does.
-    # An earlier version of this function passed y_test here, which made
-    # Precision, Recall and F1 oracle-thresholded: the cutoff was chosen to
-    # minimise cost against the very labels the metrics were then reported on.
-    # Under the 100-to-1 FN:FP cost that drives recall to 1.0 almost by
-    # construction, which is why three of four folds in the artifacts committed
-    # before this fix report recall of exactly 1.0. PR-AUC, ROC-AUC and Brier
-    # are threshold-free and were never affected.
+    # Never pass test labels here: that would make Precision, Recall and F1
+    # oracle-thresholded. tests/test_split_and_monitoring.py guards this.
     calibration_probs = calibrated_model.predict_proba(X_calibration)[:, 1]
     threshold = pick_best_threshold(y_calibration.to_numpy(), calibration_probs)
 
@@ -127,6 +112,8 @@ def run_one_fold(df: pd.DataFrame, train_end_step: int, test_end_step: int, xgb_
         "n_train": len(train_period),
         "n_test": len(test_period),
         "fraud_rate_test_pct": round(100 * y_test.mean(), 4),
+        "calibration_steps": f"{calibration_rows['step'].min()}-{calibration_rows['step'].max()}",
+        "fraud_rate_calibration_pct": round(100 * y_calibration.mean(), 4),
         "threshold": round(threshold, 4),
         "PR-AUC": round(average_precision_score(y_test, predicted_probs), 4),
         "ROC-AUC": round(roc_auc_score(y_test, predicted_probs), 4),
@@ -167,11 +154,28 @@ def validate(data_path: str) -> None:
     }
     for metric in metric_names:
         values = [r[metric] for r in fold_results]
-        summary[metric] = {"mean": round(float(np.mean(values)), 4), "std": round(float(np.std(values)), 4)}
+        digits = 6 if metric == "Brier" else 4  # Brier is around 1e-4, so 4 dp would round it away
+        summary[metric] = {
+            "mean": round(float(np.mean(values)), digits),
+            "std": round(float(np.std(values)), digits),
+        }
+
+    # How far the cost-optimal cut-off moves from one fold to the next.
+    thresholds = np.array([r["threshold"] for r in fold_results], dtype=float)
+    summary["threshold"] = {
+        "min": round(float(thresholds.min()), 4),
+        "max": round(float(thresholds.max()), 4),
+        "mean": round(float(thresholds.mean()), 4),
+        "std": round(float(thresholds.std()), 4),
+        "coefficient_of_variation": round(float(thresholds.std() / thresholds.mean()), 4)
+        if thresholds.mean() > 0 else None,
+    }
 
     log.info("Walk-forward summary (mean +/- std across %d folds):", len(fold_results))
     for metric in metric_names:
-        log.info("  %-10s %.4f +/- %.4f", metric, summary[metric]["mean"], summary[metric]["std"])
+        log.info("  %-10s %.6f +/- %.6f", metric, summary[metric]["mean"], summary[metric]["std"])
+    log.info("  threshold  min %.4f  max %.4f  CV %s", summary["threshold"]["min"],
+             summary["threshold"]["max"], summary["threshold"]["coefficient_of_variation"])
 
     save_dashboard_artifacts(fold_results, summary)
 

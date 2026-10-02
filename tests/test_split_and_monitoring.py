@@ -59,10 +59,10 @@ def test_split_is_not_random():
 
 
 def test_default_split_step_leaves_both_sides_populated():
-    """SPLIT_STEP is ~66% of the 744-step horizon. If it ever drifts past the end
+    """SPLIT_STEP is about 66% of the 743-step horizon (steps 1 to 743). If it ever drifts past the end
     of the data, the test set silently becomes empty and every metric becomes
     meaningless rather than wrong."""
-    assert 0 < SPLIT_STEP < 744
+    assert 0 < SPLIT_STEP < 743
     df = _stepped_frame(n=2000)
     train, test = time_based_split(df)
     assert len(train) > 0 and len(test) > 0

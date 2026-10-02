@@ -11,11 +11,15 @@ was trained on.
 Parity with the real model is enforced by tests/test_export_parity.py rather
 than asserted here. That test scores a fixed-seed sample of 20,000
 transactions through both this file's scoring path and the committed
-scikit-learn/xgboost pickle. The measured worst case is about 1.9e-06 in
+scikit-learn/xgboost pickle. For the model trained on 2026-10-02 the measured
+worst case is about 6.6e-08 in
 absolute probability, concentrated on rows that land exactly on a tree split
-threshold or an isotonic breakpoint; the mean disagreement is around 6e-10.
-A full drain is one of those rows, so it agrees to about 3.7e-06 rather than
-exactly, while zero-balance and tiny-amount cases match bit for bit.
+threshold or an isotonic breakpoint; the mean disagreement is around 1.4e-10.
+
+Requests are validated before scoring: the five fields must be present, finite
+and non-negative, and the body is capped at MAX_BODY_BYTES. XGBoost treats NaN
+as missing while the traversal below would send it right, so parity only holds
+for finite inputs, and the validation keeps the port inside that range.
 """
 import json
 import math
@@ -25,8 +29,12 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler
 
 # Fetched once per cold start and cached at module level for the lifetime of
-# this function instance -- avoids bundling a 350KB data file into the
-# deployment (the model itself is unchanged; this is just where it lives).
+# this function instance, which avoids bundling the export into the deployment.
+#
+# This URL follows the main branch on purpose: pushing a new
+# model/model_export.json to main changes the live demo's scores at the next
+# cold start, with no separate deploy. Retrain, re-export, run
+# tests/test_export_parity.py and update the docs before pushing an export.
 _MODEL_URL = (
     "https://raw.githubusercontent.com/alvenyuka/Fraud-Detection-System/main/model/model_export.json"
 )
@@ -90,7 +98,7 @@ def eval_tree(tree: dict, values: list) -> float:
 def isotonic_predict(raw_prob: float) -> float:
     x_min, x_max = ISO_X[0], ISO_X[-1]
     x = min(max(raw_prob, x_min), x_max)
-    # linear scan is fine -- only 28 breakpoints
+    # a linear scan is fine: the export holds a few dozen breakpoints
     if x <= ISO_X[0]:
         return ISO_Y[0]
     for i in range(1, len(ISO_X)):
@@ -118,6 +126,39 @@ def score_transaction(txn: dict) -> dict:
 
 
 REQUIRED_FIELDS = ["amount", "oldbalanceOrg", "newbalanceOrig", "oldbalanceDest", "newbalanceDest"]
+MAX_BODY_BYTES = 10_000
+
+
+def parse_transaction(body: dict) -> dict:
+    """Validate a request body and return the five fields as floats.
+
+    Raises ValueError for a missing field, a non-numeric value, NaN, infinity or a
+    negative number. Amounts and balances in PaySim are never negative, and the
+    pure-Python traversal only matches XGBoost on finite inputs.
+    """
+    if not isinstance(body, dict):
+        raise ValueError("request body must be a JSON object")
+    missing = [f for f in REQUIRED_FIELDS if f not in body]
+    if missing:
+        raise ValueError(f"Missing fields: {', '.join(missing)}")
+    txn = {}
+    for field in REQUIRED_FIELDS:
+        value = body[field]
+        if isinstance(value, bool):
+            raise ValueError(f"{field} must be a number")
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"{field} must be a number") from None
+        if not math.isfinite(number) or number < 0:
+            raise ValueError("amount and balances must be finite, non-negative numbers")
+        txn[field] = number
+    return txn
+
+
+def check_body_length(length: int) -> None:
+    if length < 0 or length > MAX_BODY_BYTES:
+        raise ValueError("request body too large")
 
 
 class handler(BaseHTTPRequestHandler):
@@ -134,11 +175,9 @@ class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             length = int(self.headers.get("Content-Length", 0))
+            check_body_length(length)
             body = json.loads(self.rfile.read(length) or b"{}")
-            missing = [f for f in REQUIRED_FIELDS if f not in body]
-            if missing:
-                raise ValueError(f"Missing fields: {', '.join(missing)}")
-            txn = {f: float(body[f]) for f in REQUIRED_FIELDS}
+            txn = parse_transaction(body)
             result = score_transaction(txn)
             self.send_response(200)
             self._cors_headers()

@@ -35,7 +35,13 @@ import shap
 from sklearn.metrics import precision_score, recall_score
 
 sys.path.insert(0, str(Path(__file__).parent))
-from features import FEATURE_COLS, engineer_features, load_and_filter  # noqa: E402
+from features import (  # noqa: E402
+    COST_PER_FALSE_ALARM,
+    COST_PER_MISSED_FRAUD,
+    FEATURE_COLS,
+    engineer_features,
+    load_and_filter,
+)
 from train import SPLIT_STEP, time_based_split  # noqa: E402
 
 logging.basicConfig(
@@ -49,8 +55,6 @@ MODEL_PATH = Path(__file__).parent.parent / "model" / "xgb_fraud_model.pkl"
 DASHBOARD_DATA_DIR = Path(__file__).parent.parent / "dashboard" / "data"
 
 N_PROBABILITY_BINS = 50
-COST_PER_MISSED_FRAUD = 1000
-COST_PER_FALSE_ALARM = 10
 
 
 def get_raw_xgboost_model(artifact: dict):

@@ -23,7 +23,6 @@ import json
 import sys
 from pathlib import Path
 
-import joblib
 import pandas as pd
 import plotly.graph_objects as go
 import shap
@@ -31,7 +30,15 @@ import streamlit as st
 
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT / "src"))
-from features import ACTIVE_TYPES, FEATURE_COLS, engineer_features  # noqa: E402
+from config import FOLDS, SPLIT_STEP  # noqa: E402
+from features import (  # noqa: E402
+    ACTIVE_TYPES,
+    COST_PER_FALSE_ALARM,
+    COST_PER_MISSED_FRAUD,
+    FEATURE_COLS,
+    engineer_features,
+)
+from predict import load_model as load_model_artifact  # noqa: E402
 from predict import score_dataframe  # noqa: E402
 
 DATA_DIR = Path(__file__).parent / "data"
@@ -112,9 +119,8 @@ st.markdown(GLASS_CSS, unsafe_allow_html=True)
 
 @st.cache_resource
 def load_model():
-    """Load the trained model artifact that train.py produced."""
-    artifact = joblib.load(MODEL_PATH)
-    return artifact
+    """Load the trained model artifact that train.py produced (warns on a library version mismatch)."""
+    return load_model_artifact(str(MODEL_PATH))
 
 
 def get_raw_xgboost_model(artifact):
@@ -287,14 +293,15 @@ with tab_performance:
     if "metrics_summary" in saved_results:
         summary = saved_results["metrics_summary"]
         st.caption(
-            f"Results from {summary['n_folds']} time-based folds spanning the whole dataset, "
-            "not just the single train/test split this project started with."
+            f"Results from {summary['n_folds']} expanding-window folds testing steps "
+            f"{FOLDS[0][0] + 1} to {FOLDS[-1][1]}, not just the single train/test split this project started with."
         )
 
         metric_columns = st.columns(6)
         for column, metric_name in zip(metric_columns, ["PR-AUC", "ROC-AUC", "Precision", "Recall", "F1", "Brier"]):
             metric_stats = summary[metric_name]
-            column.metric(metric_name, f"{metric_stats['mean']:.4f}", f"± {metric_stats['std']:.4f}")
+            digits = 6 if metric_name == "Brier" else 4
+            column.metric(metric_name, f"{metric_stats['mean']:.{digits}f}", f"± {metric_stats['std']:.{digits}f}")
 
         st.markdown("**Results per fold:**")
         st.dataframe(pd.DataFrame(summary["folds"]), width="stretch")
@@ -399,12 +406,18 @@ with tab_performance:
         threshold_col1, threshold_col2, threshold_col3 = st.columns(3)
         threshold_col1.metric("Precision at this threshold", f"{nearest_row['precision']:.4f}")
         threshold_col2.metric("Recall at this threshold", f"{nearest_row['recall']:.4f}")
-        threshold_col3.metric("Expected cost", f"${int(nearest_row['cost']):,}")
+        threshold_col3.metric("Expected cost", f"{int(nearest_row['cost']):,} units")
 
         figure = go.Figure()
         figure.add_trace(go.Scatter(x=curve["threshold"], y=curve["cost"], mode="lines", line=dict(color=COLOR_BLUE, width=2)))
         figure.add_vline(x=chosen_threshold, line_dash="dot", line_color=COLOR_WARNING)
-        style_chart(figure, "Expected cost by threshold ($1,000 per missed fraud, $10 per false alarm)", "Threshold", "Expected cost ($)")
+        style_chart(
+            figure,
+            f"Expected cost by threshold ({COST_PER_MISSED_FRAUD:,} units per missed fraud, "
+            f"{COST_PER_FALSE_ALARM} per false alarm)",
+            "Threshold",
+            "Expected cost (units)",
+        )
         st.plotly_chart(figure, width="stretch")
     else:
         st.info("Run `make explain` first to generate the threshold/cost curve.")
@@ -419,9 +432,28 @@ with tab_batch:
         "This is the same file format src/predict.py accepts from the command line."
     )
     uploaded_file = st.file_uploader("Upload a transactions CSV", type="csv")
+    scored_transactions = None
     if uploaded_file is not None:
-        transactions = pd.read_csv(uploaded_file)
-        scored_transactions = score_dataframe(transactions, artifact)
+        try:
+            transactions = pd.read_csv(uploaded_file)
+        except (pd.errors.EmptyDataError, pd.errors.ParserError, UnicodeDecodeError) as exc:
+            st.error(f"Could not read that file as a CSV: {exc}")
+            transactions = None
+        if transactions is not None and transactions.empty:
+            st.warning("The uploaded file has no rows to score.")
+        elif transactions is not None:
+            numeric_cols = ["amount", "oldbalanceOrg", "newbalanceOrig", "oldbalanceDest", "newbalanceDest"]
+            try:
+                present = [c for c in numeric_cols if c in transactions.columns]
+                values = transactions[present].apply(pd.to_numeric, errors="coerce")
+                if values.isna().any().any() or (values < 0).any().any():
+                    raise ValueError("amount and balance columns must hold non-negative numbers")
+                scored_transactions = score_dataframe(transactions, artifact)
+            except (ValueError, TypeError) as exc:
+                st.error(f"Cannot score this file: {exc}")
+                scored_transactions = None
+
+    if scored_transactions is not None:
 
         # KPI cards: every number here comes from the file the user just
         # uploaded, nothing pre-canned.
@@ -432,9 +464,9 @@ with tab_batch:
 
         kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
         kpi_col1.markdown(metric_card(f"{n_total:,}", "Total Transactions"), unsafe_allow_html=True)
-        kpi_col2.markdown(metric_card(f"{100 * n_flagged / n_total:.2f}%", "Fraud Rate", COLOR_CRITICAL_TEXT), unsafe_allow_html=True)
+        kpi_col2.markdown(metric_card(f"{100 * n_flagged / n_total:.2f}%", "Flagged share", COLOR_CRITICAL_TEXT), unsafe_allow_html=True)
         kpi_col3.markdown(metric_card(f"{n_high_risk:,}", "High-Risk Alerts (>90%)", COLOR_WARNING), unsafe_allow_html=True)
-        kpi_col4.markdown(metric_card(f"${avg_amount:,.2f}" if avg_amount == avg_amount else "N/A", "Average Amount"), unsafe_allow_html=True)
+        kpi_col4.markdown(metric_card(f"{avg_amount:,.2f}" if avg_amount == avg_amount else "N/A", "Average amount (units)"), unsafe_allow_html=True)
 
         st.markdown("")  # spacer
         st.success(f"Scored {n_total:,} transactions, {n_flagged:,} flagged ({100 * n_flagged / n_total:.2f}%)")
@@ -461,8 +493,8 @@ with tab_monitoring:
     st.subheader("Simulated drift monitoring")
     st.caption(
         "How much each feature's distribution has drifted over time, measured against the "
-        "earliest time window as the reference. This simulates what production monitoring "
-        "would look like. It is not production traffic."
+        f"shipped model's training window (steps 1 to {SPLIT_STEP}) as the reference. This "
+        "simulates what production monitoring would look like. It is not production traffic."
     )
     if "psi_timeline" in saved_results:
         psi_timeline = saved_results["psi_timeline"]

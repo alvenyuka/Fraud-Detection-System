@@ -40,10 +40,11 @@ pytestmark = pytest.mark.skipif(
 N_ROWS = 20_000
 SEED = 42
 
-# Measured, not assumed. On this fixture the worst row disagrees by about
-# 1.9e-06 and the mean by about 6e-10. The bounds below sit a little above
-# both, so ordinary float noise passes and a real divergence in the traversal
-# or the calibration scan does not.
+# Measured, not assumed. For the model trained on 2026-10-02 the worst row on
+# this fixture disagrees by about 6.6e-08 and the mean by about 1.4e-10. The
+# bounds below sit above both, with room for a retrained model, so ordinary
+# float noise passes and a real divergence in the traversal or the calibration
+# scan does not.
 MAX_ABS_DIFF = 1e-5
 MAX_MEAN_DIFF = 1e-8
 
@@ -112,12 +113,11 @@ def test_the_edge_cases_the_model_keys_on_agree(transactions):
     """A full drain, a zero-balance sender and a tiny amount, which are the
     three shapes the score is most sensitive to.
 
-    Worth knowing rather than glossing: the zero-balance and tiny-amount rows
-    match bit for bit, but the full drain does not. It disagrees by about
-    3.7e-06, the largest gap found anywhere, because a full drain puts the raw
-    margin close to an isotonic breakpoint and the two implementations
-    interpolate the same segment in a different float order. It is noise, not
-    a modelling difference, and calling it an exact match would be wrong.
+    These rows can land on an isotonic breakpoint, where the two
+    implementations interpolate the same segment in a different float order.
+    For the model trained on 2026-10-02 the full drain and the zero-balance
+    sender match exactly and the tiny amount differs by about 4.3e-08: noise,
+    not a modelling difference, so the check is a tolerance, not equality.
     """
     import sys
 

@@ -1,16 +1,27 @@
 """
 business_impact.py: what the shipped model is worth on the holdout, in money and alerts.
 
-On the 132,136 transactions after step 490, compare three ways of screening transfers:
+On the holdout (TRANSFER and CASH_OUT transactions after step 490), compare three ways
+of screening transfers:
 
   no screening       every fraud goes through
-  isFlaggedFraud     PaySim's built-in rule (flags transfers above 200,000)
+  isFlaggedFraud     PaySim's built-in flag, scored as the column in the data. PaySim
+                     documents it as a rule on transfers above 200,000, but the data does
+                     not follow that rule: the smallest flagged amount is 353,874.22 and
+                     many larger transfers are not flagged (see the notebook).
   shipped model      the calibrated XGBoost at its cost-optimal threshold
 
 For each: the value of fraud stopped, the value that got through, and the number of
 honest customers whose transaction was frozen. Amounts are PaySim's simulated currency
 units; the value of a fraud is its transaction amount. A second table shows the same
-model at a stricter threshold, since the cut-off is a business choice (see README).
+model at a fixed comparison threshold of 0.5, since the cut-off is a business choice
+(see README).
+
+Break-even cost per freeze: of the two model thresholds, the lower one flags more. The
+extra fraud value it stops, divided by the extra honest customers it freezes, is the
+cost per wrongful freeze at which the two thresholds cost the same. If wrongly freezing
+one honest customer costs more than this many units, the higher threshold is the
+cheaper choice. It is printed and saved as break_even_cost_per_freeze.
 
 Writes dashboard/data/business_impact.json and figures/fraud_value_stopped.png.
 
@@ -33,7 +44,7 @@ from train import SPLIT_STEP, time_based_split  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 MODEL_PATH = ROOT / "model" / "xgb_fraud_model.pkl"
-STRICT_THRESHOLD = 0.5
+COMPARISON_THRESHOLD = 0.5
 
 
 def screening_outcome(flagged, is_fraud, amount) -> dict:
@@ -54,7 +65,20 @@ def screening_outcome(flagged, is_fraud, amount) -> dict:
     }
 
 
-def plot(results: dict, path: Path) -> None:
+def break_even(lower: dict, higher: dict) -> dict:
+    """Extra value stopped and extra honest customers frozen by the lower threshold over
+    the higher one, and the cost per freeze at which the two break even."""
+    extra_value = lower["fraud_value_stopped"] - higher["fraud_value_stopped"]
+    extra_frozen = lower["honest_transactions_frozen"] - higher["honest_transactions_frozen"]
+    return {
+        "extra_frauds_caught": lower["frauds_caught"] - higher["frauds_caught"],
+        "extra_fraud_value_stopped": extra_value,
+        "extra_honest_frozen": extra_frozen,
+        "break_even_cost_per_freeze": extra_value / extra_frozen if extra_frozen > 0 else None,
+    }
+
+
+def plot(results: dict, path: Path, n_transactions: int) -> None:
     import matplotlib
 
     matplotlib.use("Agg")
@@ -71,10 +95,11 @@ def plot(results: dict, path: Path) -> None:
         ax.text(stopped[i] + missed[i] + 0.05, i,
                 f"{r['share_of_fraud_value_stopped']:.2%} stopped, {r['honest_transactions_frozen']:,} honest frozen",
                 va="center", fontsize=9, color="#2d3748")
-    ax.set_xlabel("Billions of PaySim currency units")
+    ax.set_xlabel("Billions of PaySim simulated units")
     ax.set_xlim(0, (stopped[0] + missed[0]) * 1.9)
     ax.invert_yaxis()
-    ax.set_title("Fraud value on the 132,136-transaction holdout, by screening method", loc="left", fontsize=11)
+    ax.set_title(f"Fraud value on the {n_transactions:,}-transaction holdout, by screening method",
+                 loc="left", fontsize=11)
     ax.legend(frameon=False, loc="lower right", fontsize=9)
     for s in ("top", "right"):
         ax.spines[s].set_visible(False)
@@ -95,22 +120,39 @@ def main() -> None:
     probs = artifact["model"].predict_proba(test[FEATURE_COLS])[:, 1]
     fraud, amount = test["isFraud"].to_numpy(), test["amount"].to_numpy()
 
+    operating_key = f"Model, threshold {threshold:.4f}"
+    comparison_key = f"Model, threshold {COMPARISON_THRESHOLD}"
     results = {
         "No screening": screening_outcome(np.zeros(len(test), bool), fraud, amount),
-        "isFlaggedFraud rule": screening_outcome(test["isFlaggedFraud"].to_numpy() == 1, fraud, amount),
-        f"Model, threshold {threshold:.4f}": screening_outcome(probs >= threshold, fraud, amount),
-        f"Model, threshold {STRICT_THRESHOLD}": screening_outcome(probs >= STRICT_THRESHOLD, fraud, amount),
+        "isFlaggedFraud flag": screening_outcome(test["isFlaggedFraud"].to_numpy() == 1, fraud, amount),
+        operating_key: screening_outcome(probs >= threshold, fraud, amount),
+        comparison_key: screening_outcome(probs >= COMPARISON_THRESHOLD, fraud, amount),
     }
+    (lower_t, lower_key), (higher_t, higher_key) = sorted(
+        [(threshold, operating_key), (COMPARISON_THRESHOLD, comparison_key)])
+    trade_off = {"lower_threshold": lower_t, "higher_threshold": higher_t,
+                 **break_even(results[lower_key], results[higher_key])}
     out = ROOT / "dashboard" / "data" / "business_impact.json"
     out.write_text(json.dumps({
         "population": f"{len(test):,} TRANSFER and CASH_OUT transactions after step {SPLIT_STEP}",
-        "currency": "PaySim simulated currency units; a fraud's value is its transaction amount",
+        "n_transactions": int(len(test)),
+        "currency": "PaySim simulated units; a fraud's value is its transaction amount",
         "operating_threshold": threshold,
+        "comparison_threshold": COMPARISON_THRESHOLD,
         "results": results,
+        "lower_vs_higher_threshold": trade_off,
     }, indent=2))
     (ROOT / "figures").mkdir(exist_ok=True)
-    plot({k: v for k, v in results.items() if k != "No screening"}, ROOT / "figures" / "fraud_value_stopped.png")
+    plot({k: v for k, v in results.items() if k != "No screening"},
+         ROOT / "figures" / "fraud_value_stopped.png", len(test))
     print(pd.DataFrame(results).T.to_string())
+    print()
+    print(f"Lower threshold {lower_t:.4f} against higher threshold {higher_t:.4f}:")
+    print(f"  extra frauds caught        {trade_off['extra_frauds_caught']:,}")
+    print(f"  extra fraud value stopped  {trade_off['extra_fraud_value_stopped']:,.2f} units")
+    print(f"  extra honest customers frozen {trade_off['extra_honest_frozen']:,}")
+    be = trade_off["break_even_cost_per_freeze"]
+    print("  break_even_cost_per_freeze " + (f"{be:,.2f} units" if be is not None else "undefined (no extra freezes)"))
     print(f"wrote {out.relative_to(ROOT)} and figures/fraud_value_stopped.png")
 
 

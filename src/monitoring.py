@@ -7,10 +7,12 @@ on. This is called "drift". This project's own README listed drift
 monitoring as something not yet built. This script builds a simple version
 of it.
 
-We don't have real production traffic to monitor, so we simulate it: PaySim
-already spans many time steps, so we treat the earliest slice of time as
-"what the model was trained on" and check how much every later slice has
-drifted away from it.
+There is no real production traffic to monitor, so it is simulated: PaySim
+spans 743 hourly steps, the shipped model trains on steps 1 to 490
+(SPLIT_STEP in src/config.py), and that training window is the reference.
+Every 50-step window is compared with it, so PSI describes drift against what
+the model actually saw. Windows inside the training span are expected to score
+low; the windows after step 490 are the ones that matter.
 
 The tool used to measure drift is PSI (Population Stability Index), a single
 number per feature per time window:
@@ -32,6 +34,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent))
+from config import SPLIT_STEP  # noqa: E402
 from features import engineer_features, load_and_filter  # noqa: E402
 
 logging.basicConfig(
@@ -44,9 +47,9 @@ log = logging.getLogger(__name__)
 WINDOW_SIZE_STEPS = 50  # roughly 2 days of PaySim time per window
 N_BINS = 10
 
-# These 4 engineered features carry 93.7% of mean |SHAP| attribution between
-# them (dashboard/data/feature_importance.json), with amount taking the
-# remaining 6.3%, so drift here matters most.
+# The four engineered features carry most of the model's mean |SHAP|
+# attribution (dashboard/data/feature_importance.json), so drift here matters
+# most.
 MONITORED_FEATURES = [
     "orig_balance_discrepancy",
     "dest_balance_discrepancy",
@@ -96,9 +99,9 @@ def monitor(data_path: str) -> None:
         min_step, max_step, len(window_start_steps), WINDOW_SIZE_STEPS,
     )
 
-    # The earliest window stands in for "the data the model was trained on".
-    reference_window = df[df["step"] < min_step + WINDOW_SIZE_STEPS]
-    log.info("Reference window: steps %d-%d (%d rows)", min_step, min_step + WINDOW_SIZE_STEPS - 1, len(reference_window))
+    # The reference is the shipped model's training window.
+    reference_window = df[df["step"] <= SPLIT_STEP]
+    log.info("Reference window: steps %d-%d (%d rows)", min_step, SPLIT_STEP, len(reference_window))
 
     psi_rows = []
     for window_start in window_start_steps:
@@ -122,11 +125,17 @@ def monitor(data_path: str) -> None:
     output_path = DASHBOARD_DATA_DIR / "psi_timeline.csv"
     psi_timeline.to_csv(output_path, index=False)
 
+    def verdict(psi: float) -> str:
+        return "significant shift" if psi >= 0.25 else ("moderate shift" if psi >= 0.1 else "stable")
+
     log.info("Highest PSI reached per feature across the whole time span:")
-    worst_psi_per_feature = psi_timeline.groupby("feature")["psi"].max().round(4)
-    for feature, worst_psi in worst_psi_per_feature.items():
-        verdict = "significant shift" if worst_psi > 0.25 else ("moderate shift" if worst_psi > 0.1 else "stable")
-        log.info("  %-28s worst PSI=%.4f (%s)", feature, worst_psi, verdict)
+    for feature, worst_psi in psi_timeline.groupby("feature")["psi"].max().round(4).items():
+        log.info("  %-28s worst PSI=%.4f (%s)", feature, worst_psi, verdict(worst_psi))
+
+    after_training = psi_timeline[psi_timeline["window_start_step"] > SPLIT_STEP]
+    log.info("Highest PSI per feature in windows starting after step %d (unseen by the model):", SPLIT_STEP)
+    for feature, worst_psi in after_training.groupby("feature")["psi"].max().round(4).items():
+        log.info("  %-28s worst PSI=%.4f (%s)", feature, worst_psi, verdict(worst_psi))
 
     log.info("Drift monitoring timeline written -> %s", output_path)
 

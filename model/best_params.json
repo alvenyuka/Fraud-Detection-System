@@ -8,5 +8,5 @@
   "reg_alpha": 0.005371743868474862,
   "reg_lambda": 0.2557243789863553,
   "scale_pos_weight": 2.1446250594707337,
-  "n_estimators": 500
+  "n_estimators": 35
 }

@@ -6,16 +6,21 @@ were never actually tested against alternatives. This script tries a range of
 settings and keeps the combination that scores best, so the final model isn't
 just "whatever numbers we guessed the first time."
 
-How we test each combination of settings ("trial"):
-  1. Take only the training period (steps 1-650). The last part of the
-     dataset (steps 651-743) is never touched here.
-  2. Inside that training period, split time into 3 smaller before/after
-     windows (see TUNING_SPLITS below). For each window, train on the
-     "before" part and score on the "after" part.
+How each combination of settings ("trial") is tested:
+  1. Take only steps 1-350, the span the tuning windows cover. Nothing after
+     step 350 is read here.
+  2. Inside that span, use 3 smaller before/after windows (TUNING_SPLITS in
+     src/config.py). For each window, train on the "before" part and score on
+     the "after" part.
   3. Average the score (PR-AUC, the right metric for rare-event problems
      like fraud) across the 3 windows. That average is the trial's score.
-Optuna (a hyperparameter search library) tries ~40 different combinations
-and remembers which one scored highest.
+Optuna (a hyperparameter search library) tries 40 combinations by default
+and keeps the one that scored highest.
+
+Each window's model stops early, so the number of trees it was scored with is
+usually well below the cap of 500. The trial records the median of those tree
+counts, and the winning trial's median is what src/train.py ships, so the
+shipped model has the configuration that was actually evaluated.
 
 Every tuning window ends at or before step 350, so no row used to choose the
 hyperparameters is ever used to report a result: the walk-forward folds in
@@ -40,6 +45,7 @@ from sklearn.metrics import average_precision_score
 from xgboost import XGBClassifier
 
 sys.path.insert(0, str(Path(__file__).parent))
+from config import HOLDOUT_STEP_SHARE, TUNING_SPLITS  # noqa: E402
 from features import FEATURE_COLS, engineer_features, load_and_filter  # noqa: E402
 
 logging.basicConfig(
@@ -50,14 +56,7 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 optuna.logging.set_verbosity(optuna.logging.WARNING)  # keep Optuna's own logs quiet, we log ourselves below
 
-# Three small "before -> after" windows used only for tuning, all ending at or
-# before step 350, below every reporting window (see the module docstring).
-TUNING_SPLITS = [
-    (200, 250),  # train on steps <= 200, score on steps 201-250
-    (250, 300),
-    (300, 350),
-]
-INNER_VALIDATION_SHARE = 0.2  # last fifth of each window's training steps drives early stopping
+INNER_VALIDATION_SHARE = HOLDOUT_STEP_SHARE  # last fifth of each window's training steps drives early stopping
 
 BEST_PARAMS_PATH = Path(__file__).parent.parent / "model" / "best_params.json"
 
@@ -92,9 +91,13 @@ def suggest_hyperparameters(trial: optuna.Trial) -> dict:
     }
 
 
-def score_one_trial(params: dict, df) -> float:
-    """Train + score this parameter set on each of the 3 tuning windows, return the average."""
-    window_scores = []
+def score_one_trial(params: dict, df, trial: optuna.Trial | None = None) -> float:
+    """Train + score this parameter set on each of the 3 tuning windows, return the average.
+
+    When a trial is passed, the median early-stopped tree count across the
+    windows is stored on it as the user attribute "n_estimators".
+    """
+    window_scores, tree_counts = [], []
     for train_end_step, window_end_step in TUNING_SPLITS:
         train_window = df[df["step"] <= train_end_step]
         test_window = df[(df["step"] > train_end_step) & (df["step"] <= window_end_step)]
@@ -112,9 +115,14 @@ def score_one_trial(params: dict, df) -> float:
         model = XGBClassifier(**params)
         model.fit(X_fit, y_fit, eval_set=[(X_val, y_val)], verbose=False)
 
+        # predict_proba uses the best iteration found by early stopping.
         predicted_probs = model.predict_proba(X_test)[:, 1]
         window_scores.append(average_precision_score(y_test, predicted_probs))
+        tree_counts.append(int(model.best_iteration) + 1)
 
+    if trial is not None and tree_counts:
+        trial.set_user_attr("n_estimators", int(np.median(tree_counts)))
+        trial.set_user_attr("tree_counts", tree_counts)
     return float(np.mean(window_scores)) if window_scores else 0.0
 
 
@@ -122,13 +130,13 @@ def tune(data_path: str, n_trials: int, out_path: str) -> None:
     df = load_and_filter(data_path)
     df = engineer_features(df)
 
-    # Only steps <= 650 are used for tuning, keeping the final held-out period untouched.
-    training_period = df[df["step"] <= 650]
+    # Only the steps the tuning windows cover are kept; nothing after step 350.
+    training_period = df[df["step"] <= max(end for _, end in TUNING_SPLITS)]
 
     study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler(seed=42))
     log.info("Starting hyperparameter search: %d trials over %d rows ...", n_trials, len(training_period))
     study.optimize(
-        lambda trial: score_one_trial(suggest_hyperparameters(trial), training_period),
+        lambda trial: score_one_trial(suggest_hyperparameters(trial), training_period, trial),
         n_trials=n_trials,
         show_progress_bar=False,
     )
@@ -137,7 +145,13 @@ def tune(data_path: str, n_trials: int, out_path: str) -> None:
     log.info("Best settings found: %s", study.best_params)
 
     best_params = dict(study.best_params)
-    best_params["n_estimators"] = 500  # the final training run doesn't use early stopping, so fix this
+    # The final training run has no early-stopping set, so it ships the tree
+    # count the winning trial was actually scored with.
+    best_params["n_estimators"] = study.best_trial.user_attrs["n_estimators"]
+    log.info(
+        "Early-stopped tree counts per window: %s -> shipping the median, %d",
+        study.best_trial.user_attrs["tree_counts"], best_params["n_estimators"],
+    )
 
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)

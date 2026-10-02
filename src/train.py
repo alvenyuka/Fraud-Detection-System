@@ -21,29 +21,40 @@ Usage
 """
 
 import argparse
+import datetime as dt
 import json
 import logging
+import platform
 import sys
 from pathlib import Path
 
 import joblib
 import numpy as np
 import pandas as pd
+import sklearn
+import xgboost
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.frozen import FrozenEstimator
 from sklearn.metrics import (
+    average_precision_score,
     brier_score_loss,
+    confusion_matrix,
+    f1_score,
     precision_score,
     recall_score,
-    f1_score,
-    average_precision_score,
     roc_auc_score,
 )
-from sklearn.model_selection import train_test_split
 from xgboost import XGBClassifier
 
 sys.path.insert(0, str(Path(__file__).parent))
-from features import FEATURE_COLS, engineer_features, load_and_filter, pick_best_threshold  # noqa: E402
+from config import SPLIT_STEP  # noqa: E402,F401  (re-exported for explain.py and the tests)
+from features import (  # noqa: E402
+    FEATURE_COLS,
+    engineer_features,
+    load_and_filter,
+    pick_best_threshold,
+    split_off_latest_steps,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -52,7 +63,6 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-SPLIT_STEP = 490  # ~66% of 744-step horizon
 BEST_PARAMS_PATH = Path(__file__).parent.parent / "model" / "best_params.json"
 
 
@@ -96,6 +106,18 @@ def load_xgb_params() -> dict:
     return DEFAULT_XGB_PARAMS
 
 
+def library_versions() -> dict:
+    """The versions that wrote the pickle. src/predict.py compares them on load."""
+    return {
+        "python": platform.python_version(),
+        "numpy": np.__version__,
+        "pandas": pd.__version__,
+        "scikit-learn": sklearn.__version__,
+        "xgboost": xgboost.__version__,
+        "joblib": joblib.__version__,
+    }
+
+
 def train(data_path: str, model_out: str) -> None:
     xgb_params = load_xgb_params()
     df = load_and_filter(data_path)
@@ -103,12 +125,13 @@ def train(data_path: str, model_out: str) -> None:
 
     train_df, test_df = time_based_split(df)
 
-    # Hold out a calibration slice from the training period so isotonic
-    # regression isn't fit on rows XGBoost has already memorised. Fitting a
-    # calibrator on the same data used to train the base model overstates
-    # how well-calibrated the model actually is on unseen data.
-    fit_df, calib_df = train_test_split(
-        train_df, test_size=0.2, stratify=train_df["isFraud"], random_state=42
+    # Hold out the latest fifth of the training steps for calibration, so
+    # isotonic regression isn't fit on rows XGBoost has already memorised and
+    # the calibration rows sit next in time to the rows being scored.
+    fit_df, calib_df = split_off_latest_steps(train_df)
+    log.info(
+        "Fit on steps %d-%d, calibrate on steps %d-%d",
+        fit_df["step"].min(), fit_df["step"].max(), calib_df["step"].min(), calib_df["step"].max(),
     )
 
     X_fit,   y_fit   = fit_df[FEATURE_COLS],   fit_df["isFraud"]
@@ -135,6 +158,7 @@ def train(data_path: str, model_out: str) -> None:
 
     probs = calibrated.predict_proba(X_test)[:, 1]
     preds = (probs >= operating_threshold).astype(int)
+    tn, fp, fn, tp = confusion_matrix(y_test, preds, labels=[0, 1]).ravel()
 
     metrics = {
         "PR-AUC":    round(average_precision_score(y_test, probs), 4),
@@ -144,6 +168,10 @@ def train(data_path: str, model_out: str) -> None:
         "F1":        round(f1_score(y_test, preds), 4),
         "Brier":     round(brier_score_loss(y_test, probs), 6),
         "Threshold": round(operating_threshold, 4),
+        "Frauds caught": int(tp),
+        "Frauds missed": int(fn),
+        "False alarms": int(fp),
+        "Holdout rows": int(len(y_test)),
     }
 
     log.info("Test-set metrics:")
@@ -158,6 +186,11 @@ def train(data_path: str, model_out: str) -> None:
         "feature_cols":        FEATURE_COLS,
         "operating_threshold": operating_threshold,
         "metrics":             metrics,
+        "n_estimators":        int(xgb_params["n_estimators"]),
+        "fit_steps":           [int(fit_df["step"].min()), int(fit_df["step"].max())],
+        "calibration_steps":   [int(calib_df["step"].min()), int(calib_df["step"].max())],
+        "trained_on":          dt.date.today().isoformat(),
+        "versions":            library_versions(),
     }
     joblib.dump(artifact, out_path)
     log.info("Model saved -> %s", out_path)

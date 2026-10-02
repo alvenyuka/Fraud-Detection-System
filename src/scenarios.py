@@ -103,6 +103,20 @@ def partial_skim(model) -> dict:
             "fraud_probability": _score(model, [row])[0]}
 
 
+def small_full_drain(model) -> dict:
+    """A customer moving their whole 12-unit balance, credited in full: the demo case
+    that first exposed the full-drain shortcut."""
+    row = {
+        "amount": 12.0,
+        "oldbalanceOrg": 12.0,
+        "newbalanceOrig": 0.0,
+        "oldbalanceDest": RECIPIENT_OPENING_BALANCE,
+        "newbalanceDest": RECIPIENT_OPENING_BALANCE + 12.0,
+    }
+    return {"description": "12-unit balance moved in full, recipient credited in full",
+            "fraud_probability": _score(model, [row])[0]}
+
+
 def main() -> Path:
     bundle = joblib.load(MODEL_PATH)
     model = bundle["model"]
@@ -121,6 +135,7 @@ def main() -> Path:
         "diversion_sweep": diversion_sweep(model),
         "drain_sweep": drain_sweep(model),
         "partial_skim": partial_skim(model),
+        "small_full_drain": small_full_drain(model),
     }
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -134,7 +149,12 @@ def main() -> Path:
         print(f"  {row['drain_share']:>6.0%} drained  -> {row['fraud_probability']:.4%}")
     print(f"\n{payload['partial_skim']['description']}: "
           f"{payload['partial_skim']['fraud_probability']:.4%}")
-    print(f"\nwrote {OUTPUT_PATH}")
+    threshold = payload["operating_threshold"]
+    small = payload["small_full_drain"]
+    flagged = "flagged" if small["fraud_probability"] >= threshold else "not flagged"
+    print(f"{small['description']}: {small['fraud_probability']:.4%} ({flagged} at {threshold:.4f})")
+    print()
+    print(f"wrote {OUTPUT_PATH}")
     return OUTPUT_PATH
 
 
