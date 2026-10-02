@@ -1,8 +1,9 @@
 # Fraud Detection System
 
-An XGBoost fraud classifier for mobile-money transfers, trained on 6.3 million PaySim transactions and tested
-on a strict time-based holdout. It stops **99.99% of the fraud value** in the holdout, against 1.1% for the
-simulator's built-in rule, catching **2,743 of 2,754 frauds at 98.4% precision**, with a live scoring demo.
+A model that flags fraudulent mobile-money transfers so they can be stopped before the money leaves. On 132,136
+transactions it had never seen, it **stopped 99.99% of the fraud value** (the simulator's built-in rule stopped
+1.1%), catching **2,743 of 2,754 frauds** while wrongly flagging 44 legitimate ones. XGBoost trained on 6.3
+million simulated PaySim transactions, with a live scoring demo.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
