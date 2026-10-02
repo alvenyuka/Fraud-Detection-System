@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Fraud Detection System | Alven Yuka</title>
-<meta name="description" content="XGBoost fraud classifier on 6.3M PaySim mobile-money transactions. Stops 99.99% of holdout fraud value at 98.4% precision, walk-forward validated.">
+<meta name="description" content="XGBoost fraud classifier on 6.3M PaySim mobile-money transactions. Stops 99.98% of holdout fraud value at 99.9% precision, walk-forward validated.">
 <style>
   :root{
     --bg:#0b0f19; --bg2:#111827; --card:#151b2b; --border:#232c42;
@@ -108,13 +108,13 @@
     <h1>Mobile-money fraud detection,<br>evaluated the way a risk team would</h1>
     <p class="tagline">XGBoost classifier on 6.3M simulated PaySim mobile-money transactions. Hyperparameters tuned
       only on earlier data, a time-based holdout, walk-forward validation across 4 later windows, calibrated
-      probabilities and a cost-based threshold. It stops 99.99% of holdout fraud value, against 1.1% for the
-      simulator's built-in rule.</p>
+      probabilities and a cost-based threshold. It stops 99.98% of holdout fraud value, against 1.1% for the
+      simulator's built-in flag.</p>
     <div class="badges">
-      <span class="badge">Fraud value stopped <b>99.99%</b></span>
+      <span class="badge">Fraud value stopped <b>99.98%</b></span>
       <span class="badge">Recall <b>99.6%</b></span>
-      <span class="badge">Precision <b>98.4%</b></span>
-      <span class="badge">Walk-forward PR-AUC <b>0.998</b></span>
+      <span class="badge">Precision <b>99.9%</b></span>
+      <span class="badge">Walk-forward PR-AUC <b>0.997</b></span>
     </div>
     <div class="cta-row">
       <a class="btn btn-primary" href="#score">Score a transaction, live</a>
@@ -155,7 +155,7 @@
       the cost of each kind of mistake, and puts the result in money: the value of fraud stopped and the number of
       honest customers frozen. PaySim is a common tutorial dataset; the contribution here isn't
       the dataset choice, it's the evaluation rigour: time-based split, calibration, cost-sensitive thresholds, and
-      a five-model comparison on identical pipelines.</p>
+      a five-model comparison in the exploratory notebook.</p>
   </div>
 </section>
 
@@ -164,11 +164,11 @@
     <h2>How it was built: seven stages, each answering one open question</h2>
     <div class="steps">
       <div class="step"><div class="n">1</div><div><h3>Baseline model</h3><p>Can a model tell fraud apart from legitimate transactions at all? (<code>src/train.py</code>)</p></div></div>
-      <div class="step"><div class="n">2</div><div><h3>Hyperparameter tuning</h3><p>40 Optuna trials, scored only on windows that end before every reporting window, so no tuning row is used to report a result. (<code>src/tune.py</code>)</p></div></div>
+      <div class="step"><div class="n">2</div><div><h3>Hyperparameter tuning</h3><p>40 Optuna trials, scored only on windows that end before every reporting window, so no tuning row is used to report a result. The model ships with the tree count early stopping chose in tuning. (<code>src/tune.py</code>)</p></div></div>
       <div class="step"><div class="n">3</div><div><h3>Walk-forward validation</h3><p>Does it hold up on more than one train/test split? (<code>src/validate.py</code>)</p></div></div>
       <div class="step"><div class="n">4</div><div><h3>Drift monitoring</h3><p>How would we know if the model started drifting in production? (<code>src/monitoring.py</code>)</p></div></div>
       <div class="step"><div class="n">5</div><div><h3>Live dashboard</h3><p>How does someone without Python actually use this? (<code>dashboard/app.py</code>)</p></div></div>
-      <div class="step"><div class="n">6</div><div><h3>Feature fix</h3><p>Live-testing the dashboard found the model flagging legitimate account closures as 100% fraud, traced to raw balance columns that were then removed from the model's inputs.</p></div></div>
+      <div class="step"><div class="n">6</div><div><h3>Feature fix</h3><p>Live-testing the dashboard found the model flagging legitimate account closures as 100% fraud, traced to raw balance columns that were then removed from the model's inputs. The fix is partial: a fully consistent full drain still scores 90.2%, because the drain ratio carries the same signal.</p></div></div>
       <div class="step"><div class="n">7</div><div><h3>Diagnostics</h3><p>Does one feature dominate the model's decisions, and where's the real precision/recall/cost trade-off? (<code>src/explain.py</code>)</p></div></div>
     </div>
   </div>
@@ -180,17 +180,18 @@
     <p class="lead">Output of <code>src/train.py</code>, <code>src/validate.py</code> and <code>src/business_impact.py</code>
       run end to end against the PaySim CSV, on the 132,136 transactions after simulated hour 490 (2,754 frauds).
       An earlier version reported 99.85% precision from hyperparameters tuned on windows that overlapped the test
-      data; re-tuning on earlier data only gives the figures below.</p>
+      data. The figures below come from the retrain of 2 October 2026, with hyperparameters tuned on earlier data only
+      and calibration on the latest training hours.</p>
     <div class="metrics">
-      <div class="metric"><div class="v">99.99%</div><div class="k">Fraud value stopped</div></div>
-      <div class="metric"><div class="v">2,743 / 2,754</div><div class="k">Frauds caught</div></div>
-      <div class="metric"><div class="v">98.4%</div><div class="k">Precision (44 false alarms)</div></div>
-      <div class="metric"><div class="v">0.9996</div><div class="k">PR-AUC</div></div>
-      <div class="metric"><div class="v">0.998</div><div class="k">Walk-forward PR-AUC</div></div>
-      <div class="metric"><div class="v">0.0123</div><div class="k">Cost-optimal threshold</div></div>
+      <div class="metric"><div class="v">99.98%</div><div class="k">Fraud value stopped</div></div>
+      <div class="metric"><div class="v">2,742 / 2,754</div><div class="k">Frauds caught</div></div>
+      <div class="metric"><div class="v">99.9%</div><div class="k">Precision (3 false alarms)</div></div>
+      <div class="metric"><div class="v">0.9984</div><div class="k">PR-AUC</div></div>
+      <div class="metric"><div class="v">0.997</div><div class="k">Walk-forward PR-AUC</div></div>
+      <div class="metric"><div class="v">0.8852</div><div class="k">Cost-optimal threshold</div></div>
     </div>
     <div class="gallery">
-      <figure><img src="https://raw.githubusercontent.com/alvenyuka/Fraud-Detection-System/main/figures/fraud_value_stopped.png" alt="Fraud value on the holdout by screening method: the built-in rule stops 1.1%, the model 99.99%" loading="lazy"><figcaption>Fraud value stopped: model against the simulator's built-in rule</figcaption></figure>
+      <figure><img src="https://raw.githubusercontent.com/alvenyuka/Fraud-Detection-System/main/figures/fraud_value_stopped.png" alt="Fraud value on the holdout by screening method: the built-in flag stops 1.1%, the model 99.98%" loading="lazy"><figcaption>Fraud value stopped: model against the simulator's built-in flag</figcaption></figure>
       <figure><img src="https://raw.githubusercontent.com/alvenyuka/Fraud-Detection-System/main/figures/threshold_tradeoff.png" alt="Precision and recall by threshold, and the four walk-forward folds" loading="lazy"><figcaption>Precision and recall by threshold, and the four walk-forward folds</figcaption></figure>
       <figure><img src="https://raw.githubusercontent.com/alvenyuka/Fraud-Detection-System/main/figures/balance_discrepancy_fingerprint.png" alt="Balance-field correlations for genuine and fraudulent transactions" loading="lazy"><figcaption>Balance-discrepancy fingerprint: fraud vs. legitimate transactions</figcaption></figure>
       <figure><img src="https://raw.githubusercontent.com/alvenyuka/Fraud-Detection-System/main/figures/dispersion_over_time.jpg" alt="Transaction dispersion over the simulated time horizon" loading="lazy"><figcaption>Fraud and genuine transactions across the simulated month</figcaption></figure>
@@ -203,16 +204,16 @@
     <h2>What this doesn't claim</h2>
     <div class="callout">
       <h3>Limitation 1: the threshold is a business choice, and it drifts</h3>
-      <p>The cost-optimal cut-off (0.0123) catches one more fraud than a 0.5 cut-off but freezes 41 more honest
-        customers, and it ranged from 0.017 to 0.89 across the walk-forward folds. The near-perfect PR-AUC
-        hides that no single fixed threshold is clearly "correct" across the whole time horizon. A real deployment
-        would need to revisit it periodically.</p>
+      <p>On the holdout the cost-optimal cut-off (0.8852) and a 0.5 cut-off make the same decisions, but across the
+        walk-forward folds the cost-optimal threshold ranged from 0.021 to 1.00, and the fold with the lowest one
+        reached only 88.1% precision. The near-perfect PR-AUC hides that no single fixed threshold is clearly
+        "correct" across the whole time horizon. A real deployment would need to revisit it periodically.</p>
     </div>
     <div class="callout">
       <h3>Limitation 2: destination-balance blind spot</h3>
       <p>The model can't see whether the destination account's balance was updated consistently, because PaySim's
         CASH_OUT type doesn't strictly enforce destination-side accounting. A rule-based patch for this was tested
-        and rejected: on an earlier model version it produced 44,996 false alarms on the training split, up from 136. See <code>MODEL_CARD.md</code>.</p>
+        on an earlier model version and rejected because it multiplied false alarms on the training period. See <code>MODEL_CARD.md</code>.</p>
     </div>
   </div>
 </section>
@@ -221,7 +222,7 @@
   <div class="wrap">
     <h2>Tech stack</h2>
     <div class="stack">
-      <span class="chip">Python 3.10+</span><span class="chip">XGBoost</span><span class="chip">scikit-learn</span>
+      <span class="chip">Python 3.12+</span><span class="chip">XGBoost</span><span class="chip">scikit-learn</span>
       <span class="chip">SHAP</span><span class="chip">Streamlit</span>
       <span class="chip">Optuna</span><span class="chip">joblib</span>
     </div>

@@ -1,7 +1,8 @@
 # Fraud Detection System: task runner
 #
 # Usage:
-#   make install          Install Python dependencies
+#   make install          Install Python dependencies (exact pins)
+#   make install-lock     Install the full locked dependency tree
 #   make test             Run the unit tests (no dataset needed)
 #   make tune             Search hyperparameters (writes model/best_params.json)
 #   make validate         Walk-forward validation (writes dashboard/data artifacts)
@@ -16,7 +17,7 @@
 #   make notebook         Launch Jupyter Lab
 #   make clean            Remove __pycache__ and build artefacts
 
-.PHONY: install test tune validate monitor explain scenarios figures train predict predict-csv dashboard notebook clean help
+.PHONY: install install-lock test tune validate monitor explain scenarios figures train predict predict-csv dashboard notebook clean help
 
 DATA     ?= PS_20174392719_1491204439457_log.csv
 MODEL    ?= model/xgb_fraud_model.pkl
@@ -28,6 +29,9 @@ PYTHON   := python
 
 install:
 	$(PYTHON) -m pip install -r requirements.txt
+
+install-lock:
+	$(PYTHON) -m pip install -r requirements-lock.txt
 
 # -- Test --------------------------------------------------------------------
 
@@ -90,8 +94,9 @@ dashboard:
 
 # -- Notebook ----------------------------------------------------------------
 
+# Needs jupyterlab, which requirements.txt does not pin.
 notebook:
-	jupyter lab "Fraud Detection System.ipynb"
+	jupyter lab Fraud_Detection_System.ipynb
 
 # -- Clean -------------------------------------------------------------------
 
@@ -104,6 +109,7 @@ clean:
 help:
 	@echo ""
 	@echo "  make install          Install dependencies from requirements.txt"
+	@echo "  make install-lock     Install the full locked dependency tree"
 	@echo "  make test             Run unit tests (no dataset or model needed)"
 	@echo "  make tune             Search hyperparameters -> model/best_params.json"
 	@echo "  make validate         Walk-forward validation -> dashboard/data artifacts"

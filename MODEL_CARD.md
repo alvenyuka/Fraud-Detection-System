@@ -9,8 +9,8 @@
 | Field | Value |
 |---|---|
 | **Model type** | XGBoost + isotonic calibration |
-| **Version** | 1.5: re-tuned only on windows that precede every reporting split; walk-forward thresholds chosen on calibration data; drift monitoring, SHAP diagnostics, live scoring demo |
-| **Date** | 2026 |
+| **Version** | 1.6: ships the tree count early stopping chose in tuning (35); calibration and threshold on the latest fifth of the training steps; PSI against the training window; library versions recorded in the artefact |
+| **Date** | 2026-10-02 (retrained) |
 | **Author** | Alven Yuka (CPA Finalist) |
 | **Contact** | alvenyuka2@gmail.com |
 | **License** | MIT |
@@ -18,9 +18,10 @@
 
 ### Architecture
 
-- Base: `XGBClassifier`, fit on 80% of the training period. Hyperparameters come from `model/best_params.json` if present (produced by `src/tune.py`, see "Hyperparameter Tuning" below), otherwise the original hand-picked defaults (500 estimators, max_depth=6, learning_rate=0.1).
-- Post-hoc calibration: `CalibratedClassifierCV(FrozenEstimator(xgb), method="isotonic")`, fit on the held-out 20% of the training period, not on the rows the base model saw, so the calibration curve reflects generalization rather than in-sample fit
-- The calibration wrapper ensures output scores are interpretable as probabilities
+- Base: `XGBClassifier`, fit on the earliest 80% of the training period's steps (steps 1 to 392). Hyperparameters come from `model/best_params.json` if present (produced by `src/tune.py`, see "Hyperparameter Tuning" below), otherwise the original hand-picked defaults (500 estimators, max_depth=6, learning_rate=0.1).
+- Post-hoc calibration: `CalibratedClassifierCV(FrozenEstimator(xgb), method="isotonic")`, fit on the latest 20% of the training period's steps (steps 393 to 490), not on the rows the base model saw. The calibration slice is the part of the training period closest in time to the holdout, so the threshold chosen on it sees a fraud rate nearer the one it will be applied to.
+- The artefact records the library versions that wrote it; `src/predict.py` warns when the installed scikit-learn or xgboost differ.
+- The calibration wrapper maps raw scores to probabilities. With 35 trees and isotonic calibration the shipped model gives only 12 distinct calibrated levels, so many transactions share the same score.
 
 ### Hyperparameter Tuning
 
@@ -30,7 +31,11 @@ by step 350 (train up to step 200, 250 or 300; score the next 50 steps), so no r
 is used to report a result: walk-forward testing starts at step 351 and the holdout at step 491. Early stopping
 inside each window watches the last fifth of that window's training steps, never the rows being scored.
 
-The selected settings (`model/best_params.json`): 500 trees, max_depth 4, learning_rate 0.20,
+Each trial records the number of trees early stopping kept in each window, and the winning trial's median is
+what ships, so the shipped model has the configuration that was evaluated. For the winning trial those counts
+were 63, 35 and 11 trees.
+
+The selected settings (`model/best_params.json`): 35 trees, max_depth 4, learning_rate 0.20,
 subsample 0.60, colsample_bytree 0.81, min_child_weight 8, gamma 1.67, scale_pos_weight 2.14.
 
 ---
@@ -45,7 +50,6 @@ Flagging fraudulent `TRANSFER` and `CASH_OUT` transactions in mobile-money syste
 
 - Risk analytics teams building fraud alerting systems
 - Data scientists benchmarking fraud detection approaches
-- Recruiters and collaborators evaluating applied ML work
 
 ### Out-of-scope uses
 
@@ -64,7 +68,7 @@ Flagging fraudulent `TRANSFER` and `CASH_OUT` transactions in mobile-money syste
 | Source | [Kaggle - PaySim1](https://www.kaggle.com/datasets/ealaxi/paysim1) |
 | Total rows | 6,362,620 |
 | Filtered rows (TRANSFER + CASH_OUT) | 2,770,409 |
-| Time horizon | 744 steps (31 simulated days) |
+| Time horizon | 743 steps (31 simulated days) |
 | Fraud rate (filtered) | 0.2069% (train) / 2.084% (test) |
 
 **Time-based split at step 490.** No random shuffling. All training data precedes all test data.
@@ -94,17 +98,16 @@ found this let the model take a shortcut: PaySim's simulated fraud almost
 always drains the sender's account to exactly zero, so the model learned
 "the sender's balance hits zero" as a fraud signal **on its own**, even for
 a transaction with a perfectly consistent, zero-discrepancy destination
-update. Concretely, a $12 transaction that fully (and correctly) empties a
-$12 account scored **100% fraud probability** despite `orig_balance_discrepancy`
+update. Concretely, a 12-unit transaction that fully (and correctly) empties a
+12-unit account scored **100% fraud probability** despite `orig_balance_discrepancy`
 and `dest_balance_discrepancy` both being exactly 0. Closing an account or
 moving your whole balance somewhere else is completely normal, non-fraudulent
 behaviour, but the old model called it certain fraud every time.
 
 The raw balance columns were removed from `FEATURE_COLS`, leaving only
-`amount` and the four engineered features above. The model can no longer see
-"the balance hit zero" directly, only whether the accounting identity
-actually broke, which is the real fraud signal PaySim's discrepancy pattern
-is meant to capture.
+`amount` and the four engineered features above. The aim was a model that
+could no longer see "the balance hit zero" directly, only whether the
+accounting identity actually broke.
 
 **This turned out to be a partial fix, not a full one, and re-testing after
 the fix caught that.** `orig_drain_ratio` (`amount / oldbalanceOrg`) still
@@ -114,11 +117,16 @@ transaction at different drain fractions makes the remaining effect exact:
 
 | Drain fraction | Fraud probability |
 |---|---|
-| 10% - 99% | 0.00% to 0.01% |
-| **100%** | **85.0%** |
+| 10% / 25% / 50% / 75% / 90% / 99% | 0.0000% |
+| **100%** | **90.24%** |
 
-The probability stays near zero for every fraction up to 99%, then
-jumps sharply at exactly 100%. That step function, not a smooth
+(A 10,000-unit sender balance, a recipient holding 2,000 units and credited in
+full, from `src/scenarios.py`.) The same script scores the original demo case,
+a 12-unit balance moved in full and credited in full, at 88.52%, which is at
+the operating threshold of 0.8852 and therefore flagged.
+
+The probability is zero to four decimal places for every fraction up to 99%,
+then jumps at exactly 100%. That step function, not a smooth
 relationship with how much of the balance moved, is strong evidence that
 PaySim's fraud-generation process creates fraud at (almost) exactly 100%
 drain, and its legitimate transactions essentially never land on exactly
@@ -140,15 +148,17 @@ step 490, 2.08% of them fraud.
 
 | Metric | Value | Notes |
 |---|---|---|
-| Precision | **98.42%** | At operating threshold 0.0123, chosen by `pick_best_threshold` on the calibration split |
-| Recall | **99.60%** | |
-| F1 | 0.9901 | |
-| PR-AUC | 0.9996 | Primary metric, the one that stays informative under class imbalance |
+| Precision | **99.89%** | At operating threshold 0.8852, chosen by `pick_best_threshold` on the calibration split |
+| Recall | **99.56%** | 2,742 of 2,754 frauds caught, 3 false alarms |
+| F1 | 0.9973 | |
+| PR-AUC | 0.9984 | Primary metric, the one that stays informative under class imbalance |
 | ROC-AUC | 1.0000 (rounded) * | See caveat below |
-| Brier score | 0.000138 | Calibrated on a held-out slice of the training period, not the training rows |
+| Brier score | 0.000131 | Calibrated on steps 393 to 490, which the base model never saw |
 
-The threshold is low because the calibrated probabilities are honest about rarity (0.21% fraud in training)
-and a missed fraud is costed at 100 times a false alarm, so the cost-minimising cutoff sits well below 0.5.
+The threshold is high even though a missed fraud is costed at 100 times a false alarm, because the calibrated
+scores are coarse: on the holdout every cut-off from 0.01 to 0.88 makes exactly the same decisions
+(`dashboard/data/threshold_cost_curve.csv`), and on a cost tie `pick_best_threshold` keeps the highest tied
+threshold, which raises the fewest alerts.
 
 *A near-1.0 PR-AUC/ROC-AUC is a known property of PaySim once balance-discrepancy features are engineered;
 treat this as a documented dataset artifact, not evidence of real-world performance. See "Limitations and
@@ -162,21 +172,26 @@ its calibration split, never on the test rows, and none of the folds overlaps a 
 
 | Metric | Mean (4 folds) | Std dev |
 |---|---|---|
-| PR-AUC | 0.9983 | ± 0.0019 |
-| ROC-AUC | 0.9998 | ± 0.0002 |
-| Precision | 0.9898 | ± 0.0083 |
-| Recall | 0.9973 | ± 0.0022 |
-| F1 | 0.9936 | ± 0.0037 |
-| Brier score | 0.0001 | ± 0.0001 |
+| PR-AUC | 0.9971 | ± 0.0020 |
+| ROC-AUC | 0.9989 | ± 0.0013 |
+| Precision | 0.9690 | ± 0.0508 |
+| Recall | 0.9971 | ± 0.0029 |
+| F1 | 0.9821 | ± 0.0262 |
+| Brier score | 0.000115 | ± 0.000076 |
 
-Per-fold thresholds were 0.50, 0.89, 0.019 and 0.017. The cost-optimal cutoff moves a long way from one
-period to the next, so no single fixed threshold is clearly right across all of them. See "Limitations and
-Risks" below.
+Per-fold thresholds were 1.0000, 0.8182, 0.9855 and 0.0210 (`dashboard/data/metrics_summary.json`: min 0.0210,
+max 1.0000, coefficient of variation 0.57). The last fold's low threshold gave 88.1% precision on its test
+window, against 99.6% to 100% in the other three. The cost-optimal cutoff moves a long way from one period to
+the next, so no single fixed threshold is clearly right across all of them. See "Limitations and Risks" below.
 
 **Earlier versions of this card** reported walk-forward precision and recall from a version of
 `src/validate.py` that chose each fold's threshold on that fold's own test labels (three folds showed recall
 of exactly 1.0), and hyperparameters tuned on windows that overlapped two folds and the holdout. Both are
 fixed; the figures above replace them, and the holdout precision moved from 99.85% to 98.42% as a result.
+The retrain of 2026-10-02 then shipped the 35-tree configuration tuning evaluated, in place of 500 trees, and
+moved calibration from a random 20% of the training rows to the latest 20% of its steps. Holdout precision
+moved from 98.42% to 99.89%, recall from 99.60% to 99.56%, PR-AUC from 0.9996 to 0.9984, and walk-forward
+precision from 0.9898 to 0.9690 with a wider spread of fold thresholds.
 
 ---
 
@@ -186,44 +201,37 @@ fixed; the figures above replace them, and the holdout precision moved from 99.8
 - **Drift monitoring is simulated, not real.** `src/monitoring.py` shows what PSI monitoring would look like using PaySim's own time horizon as a stand-in for "time passing in production"; there's no real production traffic behind it yet.
 - **Threshold is static per fold.** Each walk-forward fold in `src/validate.py` picks its own cost-optimal threshold; the shipped model still uses one fixed threshold. Different fraud rates require a different operating point.
 - **Thread count is part of the model.** XGBoost draws its row-subsample mask from per-thread RNG streams, so a fixed `random_state` alone does not make a fit with `subsample` below 1.0 thread-invariant (measured on a 60,000-row synthetic frame: up to 0.093 apart in predicted probability between one thread and four at `subsample=0.84`). `n_jobs` is therefore fixed at 4 in `train.py`, `validate.py` and `tune.py`, so a re-run reproduces these figures; changing it will move them slightly.
-- **The model barely notices whether the recipient actually received the money.** Pre-deployment scenario testing swept how much of a fully-drained account's balance actually reached the recipient, holding everything else fixed: a $10,000 full-balance TRANSFER, sender drained to zero, **recipient holding $2,000 beforehand**. That opening recipient balance is part of the scenario, not a detail, because the score moves with it; a table that omits it cannot be reproduced.
+- **The model barely notices whether the recipient actually received the money.** Pre-deployment scenario testing swept how much of a fully-drained account's balance actually reached the recipient, holding everything else fixed: a 10,000-unit full-balance TRANSFER, sender drained to zero, **recipient holding 2,000 units beforehand**. That opening recipient balance is part of the scenario, not a detail, because the score moves with it; a table that omits it cannot be reproduced.
 
   | % of debited amount credited to recipient | Fraud probability |
   |---|---|
-  | 0% (money fully vanishes, classic mule fraud) | 95.73% |
-  | 25% / 50% / 75% (partial diversion) | 95.73% (identical) |
-  | 100% (fully consistent, nothing missing) | 85.00% |
+  | 0% (money fully vanishes, classic mule fraud) | 99.18% |
+  | 25% / 50% / 75% (partial diversion) | 99.18% (identical) |
+  | 100% (fully consistent, nothing missing) | 90.24% |
 
   `src/scenarios.py` regenerates this from the committed model and writes `dashboard/data/scenario_table.json`. It needs no dataset: `make scenarios`.
 
-  All four "money went missing" cases score *identically*: `dest_balance_discrepancy` accounts for only 6% of mean absolute SHAP value (see `src/explain.py` output), so it barely moves the score even when it's the clearest fraud signal on the page. The flip side of the drain-ratio finding above: this model is a **sender-side full-drain detector**, not a general money-laundering detector. A fraud pattern that partially skims an account *without* fully draining it (e.g. debits 50% of a balance and the recipient gets none of it) scores near **0%**, confirmed directly and reproduced by the same script: a $5,000 partial drain from a $10,000 balance with $0 reaching the recipient scores 0.0071%, indistinguishable from a routine legitimate transaction.
+  All four "money went missing" cases score *identically*: `dest_balance_discrepancy` accounts for only 3.9% of mean absolute SHAP value (see `src/explain.py` output), so it barely moves the score even when it's the clearest fraud signal on the page. The flip side of the drain-ratio finding above: this model is a **sender-side full-drain detector**, not a general money-laundering detector. A fraud pattern that partially skims an account *without* fully draining it (e.g. debits 50% of a balance and the recipient gets none of it) scores near **0%**, confirmed directly and reproduced by the same script: a 5,000-unit partial drain from a 10,000-unit balance with nothing reaching the recipient scores 0.0000%, indistinguishable from a routine legitimate transaction.
 
-  **A rule-based fix for this was tried and rejected; document this before re-attempting it.** (Measured on an earlier model version; the conclusion does not depend on the model's exact scores.) The obvious patch is a safety-net rule layered on top of the ML score: flag any transaction where `dest_balance_discrepancy / amount` is large (the recipient got a lot less than they should have), regardless of what the model says. Tested properly (not just on a convenient sample):
-
-  | Evaluation set | Metric | ML only | ML + shortfall rule |
-  |---|---|---|---|
-  | Test split (steps 491-743) | Missed fraud / false alarms / cost | 12 / 4 / $12,040 | 10 / 68 / $10,680 |
-  | **Train split (steps 1-490)** | Missed fraud / false alarms / cost | 16 / 136 / $17,360 | 16 / **44,996** / **$465,960** |
-
-  The rule looks like a clear win on the test split: 2 more frauds caught, lower cost, but running the *same* rule against the training period (a much larger, more representative sample) causes a false-positive explosion: precision collapses from 97.6% to ~11%, and cost jumps 27x. The root cause: PaySim's destination-balance accounting isn't a strict per-transaction ledger, especially for `CASH_OUT`; the destination is often a shared merchant/agent cash float whose balance legitimately doesn't move 1:1 with any single transaction, for reasons unrelated to fraud. Restricting the rule to `TRANSFER`-only narrowed the damage (4,363 false alarms instead of 46,155) but still nearly quadrupled cost on the training period ($59,630 vs $17,360). **Conclusion: the model's low weighting of `dest_balance_discrepancy` is correct, not a gap to patch. It already learned that this signal isn't reliable at scale, and overriding that with a hand-written rule trades a known, bounded limitation for a much worse, harder-to-predict one.** Closing this blind spot for real would need labeled real-world partial-skim fraud examples to train on, not more feature engineering on this dataset.
+  **A rule-based fix for this was tried and rejected; read this before re-attempting it.** The obvious patch is a safety-net rule layered on top of the ML score: flag any transaction where `dest_balance_discrepancy / amount` is large (the recipient got a lot less than they should have), regardless of what the model says. On an earlier model version it caught a few more frauds on the test split, but applied to the much larger training period it multiplied false alarms many times over and raised total cost, and restricting it to `TRANSFER` reduced the damage without removing it. The script that produced those measurements was not kept, so no figures are quoted here. The likely cause: PaySim's destination-balance accounting isn't a strict per-transaction ledger, especially for `CASH_OUT`; the destination is often a shared merchant or agent cash float whose balance legitimately doesn't move 1:1 with any single transaction, for reasons unrelated to fraud. **Conclusion: the model's low weighting of `dest_balance_discrepancy` is correct, not a gap to patch.** It reflects that this signal isn't reliable at scale, and overriding it with a hand-written rule trades a known, bounded limitation for a worse, harder-to-predict one. Closing this blind spot for real would need labelled real-world partial-skim fraud examples to train on, not more feature engineering on this dataset.
 - False positives freeze customer funds. High precision is a design requirement, not a vanity metric.
 
 ---
 
 ## Monitoring
 
-`src/monitoring.py` simulates production drift monitoring using Population Stability Index (PSI), since there's no real production traffic to observe. It treats the earliest slice of the PaySim time horizon (steps 1-50) as the "training-time" reference distribution and tracks how far each engineered feature drifts from it in later 50-step windows. Standard PSI thresholds apply: <0.10 stable, 0.10-0.25 moderate shift (worth watching), >0.25 significant shift (investigate).
+`src/monitoring.py` simulates production drift monitoring using Population Stability Index (PSI), since there's no real production traffic to observe. The reference distribution is the shipped model's training window (steps 1-490), so PSI describes drift against what the model actually saw, and each engineered feature is tracked across 15 windows of 50 steps. Standard PSI thresholds apply: <0.10 stable, 0.10-0.25 moderate shift (worth watching), 0.25 or more significant shift (investigate).
 
-**Real result, run against the full dataset:** 3 of the 4 engineered features show a significant shift at some point across the time horizon:
+**Result, run against the full dataset, for the windows after step 490 that the model never saw:**
 
-| Feature | Worst PSI observed | Verdict |
-|---|---|---|
-| `dest_balance_discrepancy` | 1.4163 | Significant shift |
-| `orig_drain_ratio` | 0.7813 | Significant shift |
-| `dest_amount_ratio` | 0.2633 | Significant shift |
-| `orig_balance_discrepancy` | 0.1264 | Moderate shift |
+| Feature | Worst PSI after step 490 | Window | Verdict |
+|---|---|---|---|
+| `orig_drain_ratio` | 0.7642 | steps 701-743 | Significant shift |
+| `dest_amount_ratio` | 0.2635 | steps 701-743 | Significant shift |
+| `orig_balance_discrepancy` | 0.1314 | steps 701-743 | Moderate shift |
+| `dest_balance_discrepancy` | 0.1203 | steps 701-743 | Moderate shift |
 
-This is a useful finding, not a bug to fix: PaySim's transaction volume and fraud mix genuinely change over its 744-step horizon, so a model trained only on the earliest data would need re-calibration (or re-training) as time moves on, exactly the scenario drift monitoring exists to catch. See the dashboard's Monitoring tab for the full timeline chart.
+The largest shifts arrive in the final window, where transaction volume is lowest and the fraud share highest. `dest_balance_discrepancy` sits between 0.10 and 0.25 in every window from step 451 on. A deployment would re-calibrate (or retrain) when the features drift like this, which is the scenario drift monitoring exists to catch. See the dashboard's Monitoring tab for the full timeline chart.
 
 ## How to Use
 
