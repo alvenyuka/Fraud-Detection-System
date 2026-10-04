@@ -152,7 +152,7 @@ dashboard/      Streamlit dashboard and the precomputed results it reads
 model/          trained model, tuned settings, JSON export
 tests/          55 tests: time split, both fixed leaks, accounting identity, threshold, PSI, API, port parity
 MODEL_CARD.md   intended use, evaluation, limitations
-Fraud_Detection_System.ipynb   exploratory five-model comparison
+Fraud_Detection_System.ipynb   the exploration behind src/: data decisions and a five-model comparison
 ```
 
 ## How to run
@@ -161,7 +161,7 @@ Fraud_Detection_System.ipynb   exploratory five-model comparison
 pip install -r requirements.txt   # exact pins; requirements-lock.txt pins everything
 make test        # 55 tests, no dataset needed
 # download PaySim from Kaggle into the project root, then:
-make tune        # 40 Optuna trials, about 50 minutes
+make tune        # 40 Optuna trials; the recorded run took 4 hours on a shared machine
 make train       # train and save the model, about a minute
 make validate    # four walk-forward folds
 python src/business_impact.py --data PS_20174392719_1491204439457_log.csv
@@ -172,6 +172,11 @@ make figures     # redraw the README charts
 
 The full method, the tuning and walk-forward details, drift findings and the tests are in
 [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md); intended use and risks are in [`MODEL_CARD.md`](MODEL_CARD.md).
+
+[`Fraud_Detection_System.ipynb`](Fraud_Detection_System.ipynb) is the exploration that shaped the pipeline, written
+as a decision record: each data section states the question, the evidence and the decision, the model work is a
+set of experiments (five model families, operating point, cost trade-off, a SMOTE test, SHAP), and a decision log
+marks which choices `src/` kept or reversed. Its scores come from its own wider feature set, not the shipped model.
 
 ## License
 
