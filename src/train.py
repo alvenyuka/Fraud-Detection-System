@@ -119,6 +119,14 @@ def library_versions() -> dict:
 
 
 def train(data_path: str, model_out: str) -> None:
+    """Train, calibrate and save the shipped model, and print its holdout metrics.
+
+    Steps: load PaySim and keep TRANSFER and CASH_OUT, add the engineered features,
+    split at SPLIT_STEP, fit XGBoost on the earlier part of the training period,
+    calibrate it with isotonic regression on the latest part, choose the
+    cost-minimising threshold on that calibration part, then score the holdout once.
+    The model, threshold and metrics are saved to `model_out`.
+    """
     xgb_params = load_xgb_params()
     df = load_and_filter(data_path)
     df = engineer_features(df)

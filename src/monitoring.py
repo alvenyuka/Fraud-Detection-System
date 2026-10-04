@@ -89,6 +89,11 @@ def calculate_psi(reference_values: np.ndarray, current_values: np.ndarray, n_bi
 
 
 def monitor(data_path: str) -> None:
+    """Drift monitoring: PSI of each monitored feature, per time window, against the training window.
+
+    Writes dashboard/data/psi_timeline.csv and logs the worst PSI per feature over
+    the whole span and over the windows after SPLIT_STEP that the model never saw.
+    """
     df = load_and_filter(data_path)
     df = engineer_features(df)
 
@@ -126,6 +131,7 @@ def monitor(data_path: str) -> None:
     psi_timeline.to_csv(output_path, index=False)
 
     def verdict(psi: float) -> str:
+        """Conventional reading of a PSI value: stable below 0.1, significant shift from 0.25."""
         return "significant shift" if psi >= 0.25 else ("moderate shift" if psi >= 0.1 else "stable")
 
     log.info("Highest PSI reached per feature across the whole time span:")

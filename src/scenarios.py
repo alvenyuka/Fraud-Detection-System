@@ -50,6 +50,7 @@ DRAIN_SHARES = [0.10, 0.25, 0.50, 0.75, 0.90, 0.99, 1.00]
 
 
 def _score(model, rows: list[dict]) -> list[float]:
+    """Fraud probabilities from `model` for transactions given as dicts of raw PaySim fields."""
     frame = engineer_features(pd.DataFrame(rows))
     return [float(p) for p in model.predict_proba(frame[FEATURE_COLS])[:, 1]]
 
@@ -118,6 +119,7 @@ def small_full_drain(model) -> dict:
 
 
 def main() -> Path:
+    """Score the constructed scenarios and write the scenario table the MODEL_CARD quotes."""
     bundle = joblib.load(MODEL_PATH)
     model = bundle["model"]
 

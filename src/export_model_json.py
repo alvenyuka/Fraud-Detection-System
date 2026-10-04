@@ -34,6 +34,11 @@ TMP_XGB_JSON = ROOT / "model" / "_tmp_xgb_export.json"
 
 
 def export() -> None:
+    """Export the shipped model's trees, isotonic calibration and threshold to model/model_export.json.
+
+    The JSON is what the web demo's pure-Python scorer (api/score.py) evaluates,
+    so the demo needs neither XGBoost nor scikit-learn.
+    """
     artifact = joblib.load(MODEL_PATH)
     calibrated = artifact["model"]
     cc = calibrated.calibrated_classifiers_[0]

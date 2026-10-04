@@ -79,6 +79,7 @@ def break_even(lower: dict, higher: dict) -> dict:
 
 
 def plot(results: dict, path: Path, n_transactions: int) -> None:
+    """Bar chart of fraud value stopped and let through by each screening method on the holdout, saved to `path`."""
     import matplotlib
 
     matplotlib.use("Agg")
@@ -109,6 +110,7 @@ def plot(results: dict, path: Path, n_transactions: int) -> None:
 
 
 def main() -> None:
+    """Score the holdout with the shipped model and write the business-impact JSON and chart."""
     p = argparse.ArgumentParser(description="Business impact of the shipped model on the holdout.")
     p.add_argument("--data", required=True, metavar="CSV", help="Path to PaySim CSV.")
     args = p.parse_args()

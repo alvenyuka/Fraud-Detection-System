@@ -81,6 +81,11 @@ def _f32(x: float) -> float:
 
 
 def eval_tree(tree: dict, values: list) -> float:
+    """Walk one exported XGBoost tree for one transaction and return the leaf value.
+
+    Comparisons use 32-bit floats, as XGBoost does, and a missing value follows the
+    tree's default branch.
+    """
     node = 0
     left, right = tree["left"], tree["right"]
     feat, cond, default_left = tree["feat"], tree["cond"], tree["default_left"]
@@ -96,6 +101,7 @@ def eval_tree(tree: dict, values: list) -> float:
 
 
 def isotonic_predict(raw_prob: float) -> float:
+    """Map a raw probability through the exported isotonic calibration (linear between breakpoints)."""
     x_min, x_max = ISO_X[0], ISO_X[-1]
     x = min(max(raw_prob, x_min), x_max)
     # a linear scan is fine: the export holds a few dozen breakpoints
@@ -112,6 +118,11 @@ def isotonic_predict(raw_prob: float) -> float:
 
 
 def score_transaction(txn: dict) -> dict:
+    """Score one transaction: sum the tree outputs, apply the logistic function, then calibrate.
+
+    Returns the calibrated fraud probability, whether it reaches the operating
+    threshold, the threshold, and the share of the sender's balance moved.
+    """
     features = engineer_features(txn)
     values = [features[name] for name in FEATURE_NAMES]
     margin = BASE_MARGIN + sum(eval_tree(t, values) for t in TREES)
@@ -157,11 +168,14 @@ def parse_transaction(body: dict) -> dict:
 
 
 def check_body_length(length: int) -> None:
+    """Reject a request body that is negative in length or longer than MAX_BODY_BYTES."""
     if length < 0 or length > MAX_BODY_BYTES:
         raise ValueError("request body too large")
 
 
 class handler(BaseHTTPRequestHandler):
+    """Vercel serverless handler: POST a JSON transaction to receive its fraud score."""
+
     def _cors_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")

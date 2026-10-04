@@ -129,6 +129,12 @@ def run_one_fold(df: pd.DataFrame, train_end_step: int, test_end_step: int, xgb_
 
 
 def validate(data_path: str) -> None:
+    """Walk-forward validation: retrain and score each fold in FOLDS, then summarise.
+
+    Each fold trains on steps up to its train end and scores the next window, as the
+    model would be used in production. Writes the per-fold metrics, their mean and
+    spread, and how far the chosen threshold moves between folds.
+    """
     xgb_params = load_xgb_params()
     df = load_and_filter(data_path)
     df = engineer_features(df)

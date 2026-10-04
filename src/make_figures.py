@@ -30,6 +30,7 @@ BLUE, RED, GREY = "#2b6cb0", "#c53030", "#718096"
 
 
 def main() -> None:
+    """Redraw the README chart from the files in dashboard/data (no dataset needed)."""
     curve = pd.read_csv(DATA / "threshold_cost_curve.csv")
     folds = pd.read_csv(DATA / "walk_forward_results.csv")
     operating = float(joblib.load(MODEL_PATH)["operating_threshold"])

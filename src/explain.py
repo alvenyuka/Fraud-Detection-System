@@ -121,6 +121,11 @@ def save_threshold_cost_curve(probs: np.ndarray, y_true: np.ndarray) -> None:
 
 
 def explain(data_path: str) -> None:
+    """Write the dashboard's explanation files for the shipped model on the holdout.
+
+    SHAP feature importance on a 2,000-row sample, the spread of fraud
+    probabilities, and the cost of every candidate threshold.
+    """
     artifact = joblib.load(MODEL_PATH)
     raw_xgb_model = get_raw_xgboost_model(artifact)
 

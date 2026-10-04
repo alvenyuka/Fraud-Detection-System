@@ -137,9 +137,10 @@ below it needs the 470MB PaySim CSV, and the notebook is the heavy one:
 | `make validate` | yes | under two minutes, four walk-forward folds |
 | the notebook, end to end | yes | 89 minutes for the stored run, which completed with about 5GB of free memory |
 
-The notebook is written as a step-by-step walkthrough: three parts (prepare the data, build and evaluate the
-models, communicate the results), each broken into small numbered tasks with one short cell each, the baseline
-rule scored before any model, and check-your-work assertions after each data step.
+The notebook is the exploration behind the pipeline, written as a decision record: each data section states
+a question, the evidence and the decision it led to, each experiment states what it tests and what it found,
+and a decision log marks which choices the shipped pipeline kept or reversed. It runs in small numbered steps
+of one short cell, with the baseline rule scored before any model and Check assertions after each data step.
 
 The notebook is heavier than the pipeline because it fits five models rather
 than one, including a stacking ensemble that refits three base learners across

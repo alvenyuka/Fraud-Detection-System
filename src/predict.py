@@ -45,6 +45,7 @@ CHECKED_LIBRARIES = ("scikit-learn", "xgboost")
 
 
 def installed_versions() -> dict:
+    """Installed versions of the libraries a saved model depends on, to compare with the versions it was trained on."""
     import sklearn
     import xgboost
 

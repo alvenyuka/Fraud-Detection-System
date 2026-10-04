@@ -127,6 +127,12 @@ def score_one_trial(params: dict, df, trial: optuna.Trial | None = None) -> floa
 
 
 def tune(data_path: str, n_trials: int, out_path: str) -> None:
+    """Search XGBoost settings with Optuna and write the best ones to `out_path`.
+
+    Each trial is scored by mean PR-AUC over the TUNING_SPLITS windows, all of which
+    end by step 350, so no row used to choose settings is used to report a result.
+    The tree count saved is the median early-stopped count of the winning trial.
+    """
     df = load_and_filter(data_path)
     df = engineer_features(df)
 
