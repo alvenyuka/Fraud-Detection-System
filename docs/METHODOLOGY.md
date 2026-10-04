@@ -135,7 +135,11 @@ below it needs the 470MB PaySim CSV, and the notebook is the heavy one:
 | `make train` | yes | about a minute |
 | `make tune` | yes | 40 trials; the 2026-10-02 run took 4 hours on a machine shared with other jobs |
 | `make validate` | yes | under two minutes, four walk-forward folds |
-| the notebook, end to end | yes | 74 minutes for the stored run, and roughly 6 to 8GB of free memory |
+| the notebook, end to end | yes | 89 minutes for the stored run, which completed with about 5GB of free memory |
+
+The notebook is written as a step-by-step walkthrough: three parts (prepare the data, build and evaluate the
+models, communicate the results), each broken into small numbered tasks with one short cell each, the baseline
+rule scored before any model, and check-your-work assertions after each data step.
 
 The notebook is heavier than the pipeline because it fits five models rather
 than one, including a stacking ensemble that refits three base learners across
@@ -262,7 +266,7 @@ The cost-optimal threshold swings from fold to fold (min 0.0210, max 1.0000, coe
 ### Exploratory model comparison (from the notebook, not the shipped pipeline)
 
 The notebook compares five models on its own raw-plus-error-balance features, on the same time split
-(train to step 490, test after it). From its full run finished on 3 October 2026:
+(train to step 490, test after it). From its full run finished on 4 October 2026 (the same figures as the 3 October run):
 
 | Model | PR-AUC | ROC-AUC | Recall @ 99% precision |
 |---|---|---|---|
