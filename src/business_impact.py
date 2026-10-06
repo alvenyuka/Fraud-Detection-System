@@ -23,6 +23,12 @@ cost per wrongful freeze at which the two thresholds cost the same. If wrongly f
 one honest customer costs more than this many units, the higher threshold is the
 cheaper choice. It is printed and saved as break_even_cost_per_freeze.
 
+Precision at the real fraud rate: the holdout is fraud-heavy (about 2.1% against 0.3% for
+TRANSFER and CASH_OUT over the whole simulation), and precision depends on that mix. The
+model's catch rate and false-alarm rate on the holdout are applied to a million screened
+transactions at the whole-simulation rate (`at_prevalence`), which is the precision an
+operations team would see. Saved as precision_at_real_fraud_rate.
+
 Writes dashboard/data/business_impact.json and figures/fraud_value_stopped.png.
 
 Usage
@@ -62,6 +68,28 @@ def screening_outcome(flagged, is_fraud, amount) -> dict:
         "share_of_fraud_value_stopped": stopped / total_fraud_value if total_fraud_value else 0.0,
         "honest_transactions_frozen": int((flagged & ~is_fraud).sum()),
         "honest_value_frozen": float(amount[flagged & ~is_fraud].sum()),
+    }
+
+
+def at_prevalence(outcome: dict, n_honest: int, prevalence: float, per: int = 1_000_000) -> dict:
+    """Restate one screen's results for `per` transactions at a given fraud rate.
+
+    The catch rate (frauds caught / all frauds) and the false-alarm rate (honest frozen /
+    all honest) do not depend on the fraud mix; precision does. Applying both rates to a
+    population with fraud rate `prevalence` gives the alerts and precision to expect there.
+    """
+    frauds = per * prevalence
+    catch_rate = outcome["frauds_caught"] / (outcome["frauds_caught"] + outcome["frauds_missed"])
+    false_alarm_rate = outcome["honest_transactions_frozen"] / n_honest
+    caught = catch_rate * frauds
+    false_alarms = false_alarm_rate * (per - frauds)
+    return {
+        "per_transactions": per,
+        "fraud_rate": prevalence,
+        "frauds": frauds,
+        "frauds_caught": caught,
+        "false_alarms": false_alarms,
+        "precision": caught / (caught + false_alarms) if caught + false_alarms else 0.0,
     }
 
 
@@ -134,6 +162,9 @@ def main() -> None:
         [(threshold, operating_key), (COMPARISON_THRESHOLD, comparison_key)])
     trade_off = {"lower_threshold": lower_t, "higher_threshold": higher_t,
                  **break_even(results[lower_key], results[higher_key])}
+    real_rate = float(df["isFraud"].mean())  # TRANSFER and CASH_OUT, every step
+    n_honest = int((fraud == 0).sum())
+    realistic = at_prevalence(results[operating_key], n_honest, real_rate)
     out = ROOT / "dashboard" / "data" / "business_impact.json"
     out.write_text(json.dumps({
         "population": f"{len(test):,} TRANSFER and CASH_OUT transactions after step {SPLIT_STEP}",
@@ -143,6 +174,7 @@ def main() -> None:
         "comparison_threshold": COMPARISON_THRESHOLD,
         "results": results,
         "lower_vs_higher_threshold": trade_off,
+        "precision_at_real_fraud_rate": realistic,
     }, indent=2))
     (ROOT / "figures").mkdir(exist_ok=True)
     plot({k: v for k, v in results.items() if k != "No screening"},
@@ -155,6 +187,9 @@ def main() -> None:
     print(f"  extra honest customers frozen {trade_off['extra_honest_frozen']:,}")
     be = trade_off["break_even_cost_per_freeze"]
     print("  break_even_cost_per_freeze " + (f"{be:,.2f} units" if be is not None else "undefined (no extra freezes)"))
+    print(f"At the whole-simulation fraud rate ({real_rate:.2%}), per million screened transactions: "
+          f"{realistic['frauds_caught']:,.0f} frauds caught, {realistic['false_alarms']:,.0f} false alarms, "
+          f"precision {realistic['precision']:.1%}")
     print(f"wrote {out.relative_to(ROOT)} and figures/fraud_value_stopped.png")
 
 

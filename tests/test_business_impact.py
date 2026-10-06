@@ -31,3 +31,16 @@ def test_no_screening_stops_nothing():
     assert r["fraud_value_stopped"] == 0
     assert r["share_of_fraud_value_stopped"] == 0
     assert r["honest_transactions_frozen"] == 0
+
+
+def test_precision_falls_when_fraud_is_rarer():
+    """Same catch and false-alarm rates; a rarer fraud mix means lower precision."""
+    from business_impact import at_prevalence
+
+    outcome = {"frauds_caught": 90, "frauds_missed": 10, "honest_transactions_frozen": 9}
+    common = at_prevalence(outcome, n_honest=900, prevalence=0.10, per=1000)
+    rare = at_prevalence(outcome, n_honest=900, prevalence=0.01, per=1000)
+    assert common["precision"] == pytest.approx(90 / 99)        # 100 frauds, 90 caught, 9 false alarms
+    assert rare["frauds_caught"] == pytest.approx(9)             # 10 frauds, 90% caught
+    assert rare["false_alarms"] == pytest.approx(9.9)            # 990 honest, 1% flagged
+    assert rare["precision"] < common["precision"]

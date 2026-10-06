@@ -32,7 +32,7 @@ Mobile-money fraud classifier on PaySim, a simulator whose fraud is near-determi
 
 Mobile-money fraud is mostly a precision problem. The PaySim dataset has a 0.13% positive rate, so a model that says "not fraud" every time scores 99.87% accuracy while catching zero fraud. Production fraud-ops workflows freeze customer funds on a flag, so false positives carry direct trust and regulatory cost. This repo reports precision on a strict time-based holdout, with no row of the training window drawn from after the test window: 99.89% on the single holdout, and 96.9% on average across four walk-forward folds (lowest fold 88.1%). The holdout has a 2.08% fraud rate, about 16 times the dataset's 0.13% overall rate, so precision at production prevalence would be lower.
 
-> **A note on PaySim.** PaySim is a simulator, not a sample of real traffic, and it is widely used in introductory fraud-detection tutorials, so it's a common choice. What this repo adds is the evaluation rigour: strict time-based split, calibrated probabilities, cost-sensitive threshold selection, and a five-model comparison on the notebook's own feature set.
+> **A note on PaySim.** PaySim is a simulator, not a sample of real traffic, and it is widely used in introductory fraud-detection tutorials, so it's a common choice. What this repo adds is the evaluation rigour: strict time-based split, calibrated probabilities, cost-sensitive threshold selection, a model comparison on the notebook's own feature set, and precision restated at the real fraud rate.
 
 ## How this was built
 
@@ -135,19 +135,18 @@ below it needs the 470MB PaySim CSV, and the notebook is the heavy one:
 | `make train` | yes | about a minute |
 | `make tune` | yes | 40 trials; the 2026-10-02 run took 4 hours on a machine shared with other jobs |
 | `make validate` | yes | under two minutes, four walk-forward folds |
-| the notebook, end to end | yes | 89 minutes for the stored run, which completed with about 5GB of free memory |
+| the notebook, end to end | yes | 29 minutes for the stored run, which completed with about 4GB of free memory |
 
-The notebook is the exploration behind the pipeline, written as a decision record: each data section states
-a question, the evidence and the decision it led to, each experiment states what it tests and what it found,
-and a decision log marks which choices the shipped pipeline kept or reversed. It runs in small numbered steps
-of one short cell, with the baseline rule scored before any model and Check assertions after each data step.
+The notebook is a guided walkthrough for someone learning fraud detection. It starts from two real
+fraudulent transactions and builds each idea from them in short steps: why accuracy misleads on rare events,
+the ledger identity as features, a time split, a two-question decision tree a reader can follow, XGBoost,
+choosing a cut-off from costs, what precision means at the real fraud rate, four model families compared,
+performance period by period, SMOTE against class weights, and SHAP explanations. It ends with how the
+shipped pipeline differs, exercises and a glossary.
 
-The notebook is heavier than the pipeline because it fits five models rather
-than one, including a stacking ensemble that refits three base learners across
-three cross-validation folds. Thread counts are bounded by `N_JOBS` in the
-config cell for that reason: `n_jobs=-1` nests inside the stack, and each
-worker takes its own copy of a 2.6-million-row frame, so the peak is set by how
-many are alive at once rather than by the data. Random forests use `RF_JOBS` (4) threads, which share one copy of the data. Raise `N_JOBS` if you have the
+Thread counts are bounded by `N_JOBS` in the settings cell because boosted models copy the 2.6-million-row
+training frame per thread, so the peak memory is set by how many copies are alive at once. Random forests use
+`RF_JOBS` (4) threads, which share one copy of the data. Raise `N_JOBS` if you have the
 headroom.
 
 ## Features
@@ -161,7 +160,7 @@ headroom.
 - Time-based train/test split at step 490, so no training row comes from after the test window
 - Balance-discrepancy feature engineering. The sender side dominates: `orig_balance_discrepancy` carries 51.8% of mean |SHAP| attribution and `orig_drain_ratio` 25.1%, so the two sender-side features carry 76.9% between them (`dashboard/data/feature_importance.json`)
 - SHAP attribution (2,000-row representative sample; stable across seeds)
-- Five-model comparison in the notebook, on the notebook's own feature set
+- Teaching notebook comparing a readable two-question tree and four model families, on the notebook's own feature set
 - Inference script `src/predict.py`: scores a transaction or full CSV
 - Always-on live scoring demo (`api/score.py`), a pure-Python port whose agreement with the real model is enforced by a test rather than asserted in prose
 
@@ -266,13 +265,12 @@ The cost-optimal threshold swings from fold to fold (min 0.0210, max 1.0000, coe
 
 ### Exploratory model comparison (from the notebook, not the shipped pipeline)
 
-The notebook compares five models on its own raw-plus-error-balance features, on the same time split
-(train to step 490, test after it). From its full run finished on 4 October 2026 (the same figures as the 3 October run):
+The notebook compares four model families, a two-question tree and a baseline rule on its own raw-plus-error-balance features, on the same time split
+(train to step 490, test after it). From its full run finished on 6 October 2026:
 
 | Model | PR-AUC | ROC-AUC | Recall @ 99% precision |
 |---|---|---|---|
 | Random forest | 1.0000 | 1.0000 | 1.0000 |
-| Stacking ensemble | 1.0000 | 1.0000 | 1.0000 |
 | XGBoost + SMOTE (ablation) | 0.9995 | 1.0000 | 0.9949 |
 | XGBoost, class-weighted (482, from the training labels) | 0.9989 | 0.9990 | 0.9989 |
 | Logistic regression | 0.7901 | 0.9795 | 0.4503 |
@@ -283,12 +281,12 @@ The previous stored run (30 September 2026) computed the class weight over train
 count no longer hard-coded, it reaches 0.9989, so the earlier explanation of that failure is withdrawn. SMOTE
 against class weighting is now a 0.06-point difference. The shipped pipeline treats the class weight as a
 hyperparameter: `src/tune.py`, choosing only on earlier data, picked 2.14. XGBoost is still the shipped model
-because, with tuned settings and the engineered balance features, it matches the ensembles' ranking (holdout
-PR-AUC 0.9984) as a single, explainable model, and the ensembles' literal 1.0000 on a simulator is more likely
+because, with tuned settings and the engineered balance features, it matches the random forest's ranking (holdout
+PR-AUC 0.9984) as a single, explainable model, and the forest's literal 1.0000 on a simulator is more likely
 a sign of PaySim's determinism than of a better model. LightGBM collapses on the later window with these
 settings; the notebook does not isolate which setting causes it.
 
-The notebook renders the precision-recall scoreboard, calibration, permutation-importance and SHAP charts for these models inline.
+The notebook renders the scoreboard, the cost curve, the period-by-period table and the SHAP charts inline. The stacking ensemble of earlier versions (also PR-AUC 1.0000) was dropped from the teaching notebook: it took about 40 minutes and added nothing a learner needs.
 
 ![Holdout precision and recall by threshold, and the four walk-forward folds, for the shipped model](../figures/threshold_tradeoff.png)
 
@@ -340,7 +338,7 @@ dataset, so they stay local steps behind the Makefile rather than running in CI.
 ## Roadmap
 
 - [x] Time-based evaluation harness
-- [x] Five-model comparison
+- [x] Model comparison (teaching notebook: two-question tree, logistic regression, random forest, XGBoost, LightGBM)
 - [x] Calibration + SHAP attribution
 - [x] Inference script (`src/predict.py`)
 - [x] Training pipeline (`src/train.py`)

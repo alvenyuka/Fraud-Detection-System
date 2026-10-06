@@ -49,5 +49,13 @@
     "extra_fraud_value_stopped": 0.0,
     "extra_honest_frozen": 0,
     "break_even_cost_per_freeze": null
+  },
+  "precision_at_real_fraud_rate": {
+    "per_transactions": 1000000,
+    "fraud_rate": 0.002964544224336551,
+    "frauds": 2964.544224336551,
+    "frauds_caught": 2951.6268203089408,
+    "false_alarms": 23.118411891352665,
+    "precision": 0.9922284397194402
   }
 }

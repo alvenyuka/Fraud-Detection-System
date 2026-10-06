@@ -80,7 +80,10 @@ to the recipient's balance. Fraud breaks the accounting identity.
   model and rejected because it multiplied false alarms on the training period (see the model card).
 - **PaySim is a simulator.** Once these features exist its fraud is almost deterministic, which is why the
   scores are so high. They show the evaluation method, not the accuracy to expect on a real network.
-- **The holdout is fraud-heavy** (2.1% against 0.13% overall), so precision at real prevalence would be lower.
+- **The holdout is fraud-heavy** (2.1% against 0.30% for TRANSFER and CASH_OUT over the whole simulation), and
+  precision depends on that mix. Restated at the whole-simulation rate, the model would raise about 23 false
+  alarms per million screened transactions and keep 99.2% precision (`precision_at_real_fraud_rate` in
+  `dashboard/data/business_impact.json`).
 - **Money figures are simulated units**, and the cost of a false alarm is an assumption, not a measurement.
 
 ## How it was built
@@ -118,16 +121,17 @@ mobile money from the logs of an African service, one row per transaction and on
 
 ## From exploration to pipeline
 
-[`Fraud_Detection_System.ipynb`](Fraud_Detection_System.ipynb) is the exploration that shaped the pipeline,
-written as a decision record: each data section states the question, the evidence and the decision, the model
-work is a set of experiments (five model families, operating point, cost trade-off, a SMOTE test, SHAP), and a
-decision log marks which choices `src/` kept or reversed.
+[`Fraud_Detection_System.ipynb`](Fraud_Detection_System.ipynb) is a guided walkthrough for learning fraud
+detection on this data. It starts from two real fraudulent transactions, turns the ledger rule they break into
+features, reads a two-question decision tree before training XGBoost, chooses a cut-off from costs, restates
+precision at the real fraud rate, compares four model families, checks performance period by period, and
+explains single decisions with SHAP. It ends with how the shipped pipeline differs.
 
 ![Correlation of balance fields for genuine and fraudulent transactions: fraud breaks the balance identity](figures/balance_discrepancy_fingerprint.png)
 
 Its scores come from its own wider feature set, not the shipped model, and they show why a near-perfect score
-here says more about the simulator than the model: a random forest and a stacking ensemble both reach PR-AUC
-1.0000 on the holdout and a class-weighted XGBoost 0.9989, because PaySim's fraud labels follow almost directly
+here says more about the simulator than the model: a random forest reaches PR-AUC 1.0000 on the holdout and
+a class-weighted XGBoost 0.9989, because PaySim's fraud labels follow almost directly
 from the balance features. The evaluation method, not the score, is what carries over to real data.
 
 ## Run it
@@ -151,7 +155,7 @@ dashboard/      Streamlit dashboard and the precomputed results it reads
 model/          trained model, tuned settings, JSON export
 tests/          55 tests: time split, both fixed leaks, accounting identity, threshold, PSI, API, port parity
 MODEL_CARD.md   intended use, evaluation, limitations
-Fraud_Detection_System.ipynb   the exploration behind src/: data decisions and a five-model comparison
+Fraud_Detection_System.ipynb   guided walkthrough: the ideas behind src/, step by step, with exercises
 ```
 
 The full method, the tuning and walk-forward details, drift findings and the tests are in
