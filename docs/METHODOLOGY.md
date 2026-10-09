@@ -116,7 +116,7 @@ pip install -r requirements.txt
 
 make test   # runs in seconds, needs neither the dataset nor a trained model
 
-make train DATA=PS_20174392719_1491204439457_log.csv
+make train DATA=data/PS_20174392719_1491204439457_log.csv
 make predict
 
 # Optional: the rest of the build-up (see "How this was built" above)
@@ -135,14 +135,18 @@ below it needs the 470MB PaySim CSV, and the notebook is the heavy one:
 | `make train` | yes | about a minute |
 | `make tune` | yes | 40 trials; the 2026-10-02 run took 4 hours on a machine shared with other jobs |
 | `make validate` | yes | under two minutes, four walk-forward folds |
-| the notebook, end to end | yes | 29 minutes for the stored run, which completed with about 4GB of free memory |
+| the notebook, end to end | yes | 27 minutes for the stored run, peak memory 4.3 GB (`outputs/notebook_results.json`) |
 
-The notebook is a guided walkthrough for someone learning fraud detection. It starts from two real
-fraudulent transactions and builds each idea from them in short steps: why accuracy misleads on rare events,
-the ledger identity as features, a time split, a two-question decision tree a reader can follow, XGBoost,
-choosing a cut-off from costs, what precision means at the real fraud rate, four model families compared,
-performance period by period, SMOTE against class weights, and SHAP explanations. It ends with how the
-shipped pipeline differs, exercises and a glossary.
+The notebook is the analysis behind the pipeline, organised in four parts around three questions (which
+transfers are fraudulent, how much fraud value a model stops, how many honest customers it freezes). Part 1
+loads the CSV with `pd.read_csv`, checks it, explores it by type, amount, time of day, account and balance
+pattern, works through two real frauds, turns the ledger identity into features behind a leakage guard, and
+splits by time. Part 2 builds a two-question tree, XGBoost, a cut-off chosen from costs and restated at the real
+fraud rate, compares four model families, checks performance period by period, tests SMOTE against class
+weights, and explains decisions with SHAP. Part 3 counts the fraud value stopped and the honest customers
+frozen by each screen. Part 4 states how the shipped pipeline differs, the limitations, and writes
+`outputs/notebook_results.json`, which every number quoted from the notebook is checked against. It ends with
+exercises and a glossary.
 
 Thread counts are bounded by `N_JOBS` in the settings cell because boosted models copy the 2.6-million-row
 training frame per thread, so the peak memory is set by how many copies are alive at once. Random forests use
@@ -184,7 +188,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Download PaySim from [Kaggle](https://www.kaggle.com/datasets/ealaxi/paysim1) and place `PS_20174392719_1491204439457_log.csv` in the project root.
+Download PaySim from [Kaggle](https://www.kaggle.com/datasets/ealaxi/paysim1) and place `PS_20174392719_1491204439457_log.csv` in `data/`.
 
 ## Usage
 
@@ -266,7 +270,7 @@ The cost-optimal threshold swings from fold to fold (min 0.0210, max 1.0000, coe
 ### Exploratory model comparison (from the notebook, not the shipped pipeline)
 
 The notebook compares four model families, a two-question tree and a baseline rule on its own raw-plus-error-balance features, on the same time split
-(train to step 490, test after it). From its full run finished on 6 October 2026:
+(train to step 490, test after it). From its full run finished on 9 October 2026:
 
 | Model | PR-AUC | ROC-AUC | Recall @ 99% precision |
 |---|---|---|---|

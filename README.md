@@ -121,11 +121,13 @@ mobile money from the logs of an African service, one row per transaction and on
 
 ## From exploration to pipeline
 
-[`Fraud_Detection_System.ipynb`](Fraud_Detection_System.ipynb) is a guided walkthrough for learning fraud
-detection on this data. It starts from two real fraudulent transactions, turns the ledger rule they break into
-features, reads a two-question decision tree before training XGBoost, chooses a cut-off from costs, restates
-precision at the real fraud rate, compares four model families, checks performance period by period, and
-explains single decisions with SHAP. It ends with how the shipped pipeline differs.
+[`Fraud_Detection_System.ipynb`](Fraud_Detection_System.ipynb) is the analysis behind the pipeline, in four
+parts: what the data can support (the CSV loaded with `pd.read_csv`, checked and explored by type, amount, time
+of day and account, two real frauds worked through, the ledger rule turned into features, a leakage guard and a
+time split), which transfers are fraudulent (a two-question tree, XGBoost, a cut-off chosen from costs and
+restated at the real fraud rate, four model families, performance period by period, SMOTE against class weights,
+SHAP), what it is worth (fraud value stopped and honest customers frozen by each screen), and limits and record
+(how the shipped pipeline differs, limitations, and a results file every quoted number is checked against).
 
 ![Correlation of balance fields for genuine and fraudulent transactions: fraud breaks the balance identity](figures/balance_discrepancy_fingerprint.png)
 
@@ -139,11 +141,11 @@ from the balance features. The evaluation method, not the score, is what carries
 ```bash
 pip install -r requirements.txt   # exact pins; requirements-lock.txt pins everything
 make test        # 55 tests, no dataset needed
-# download PaySim from Kaggle into the project root, then:
+# download PaySim from Kaggle into data/, then:
 make tune        # 40 Optuna trials; the recorded run took 4 hours on a shared machine
 make train       # train and save the model, about a minute
 make validate    # four walk-forward folds
-python src/business_impact.py --data PS_20174392719_1491204439457_log.csv
+python src/business_impact.py --data data/PS_20174392719_1491204439457_log.csv
 make figures     # redraw the README charts
 ```
 
@@ -155,7 +157,7 @@ dashboard/      Streamlit dashboard and the precomputed results it reads
 model/          trained model, tuned settings, JSON export
 tests/          55 tests: time split, both fixed leaks, accounting identity, threshold, PSI, API, port parity
 MODEL_CARD.md   intended use, evaluation, limitations
-Fraud_Detection_System.ipynb   guided walkthrough: the ideas behind src/, step by step, with exercises
+Fraud_Detection_System.ipynb   the analysis in four parts, executed end to end; charts in figs/, numbers in outputs/notebook_results.json
 ```
 
 The full method, the tuning and walk-forward details, drift findings and the tests are in

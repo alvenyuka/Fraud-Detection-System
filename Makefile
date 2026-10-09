@@ -19,7 +19,7 @@
 
 .PHONY: install install-lock test tune validate monitor explain scenarios figures train predict predict-csv dashboard notebook clean help
 
-DATA     ?= PS_20174392719_1491204439457_log.csv
+DATA     ?= data/PS_20174392719_1491204439457_log.csv
 MODEL    ?= model/xgb_fraud_model.pkl
 INPUT    ?= transactions.csv
 OUTPUT   ?= scored.csv

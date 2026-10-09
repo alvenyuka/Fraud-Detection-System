@@ -1,0 +1,254 @@
+{
+  "provenance": {
+    "run_date_utc": "2026-10-09",
+    "runtime_minutes": 27,
+    "peak_memory_gb": 4.3,
+    "git_commit": "247873d6daa89e837f5b681c0b1db88a01cc2fed",
+    "uncommitted_code_changes": true,
+    "python": "3.13.9",
+    "packages": {
+      "numpy": "2.4.6",
+      "pandas": "3.0.3",
+      "scikit-learn": "1.8.0",
+      "xgboost": "3.3.0",
+      "lightgbm": "4.6.0",
+      "imbalanced-learn": "0.14.2",
+      "shap": "0.51.0",
+      "matplotlib": "3.9.2",
+      "seaborn": "0.13.2"
+    }
+  },
+  "data": {
+    "transactions": 6362620,
+    "frauds": 8213,
+    "fraud_rate": 0.001290820448180152,
+    "by_type": [
+      {
+        "type": "CASH_IN",
+        "transactions": 1399284,
+        "value": 236367391912.46,
+        "median_amount": 143427.71000000002,
+        "frauds": 0,
+        "fraud_rate": 0.0
+      },
+      {
+        "type": "CASH_OUT",
+        "transactions": 2237500,
+        "value": 394412995224.49,
+        "median_amount": 147072.185,
+        "frauds": 4116,
+        "fraud_rate": 0.0018395530726256983
+      },
+      {
+        "type": "DEBIT",
+        "transactions": 41432,
+        "value": 227199221.28,
+        "median_amount": 3048.99,
+        "frauds": 0,
+        "fraud_rate": 0.0
+      },
+      {
+        "type": "PAYMENT",
+        "transactions": 2151495,
+        "value": 28093371138.37,
+        "median_amount": 9482.19,
+        "frauds": 0,
+        "fraud_rate": 0.0
+      },
+      {
+        "type": "TRANSFER",
+        "transactions": 532909,
+        "value": 485291987263.17,
+        "median_amount": 486308.39,
+        "frauds": 4097,
+        "fraud_rate": 0.007687991758442811
+      }
+    ],
+    "transfer_and_cash_out": 2770409,
+    "builtin_flag_flagged": 16,
+    "builtin_flag_recall": 0.0019481310118105442,
+    "balance_patterns_pct": {
+      "fraud": {
+        "sender balance 0 -> 0": 0.3,
+        "recipient balance 0 -> 0": 49.56,
+        "amount equals the sender's whole balance": 97.82
+      },
+      "honest": {
+        "sender balance 0 -> 0": 47.37,
+        "recipient balance 0 -> 0": 0.06,
+        "amount equals the sender's whole balance": 0.0
+      }
+    }
+  },
+  "split": {
+    "split_step": 490,
+    "train_rows": 2638273,
+    "train_fraud_rate": 0.0020691566035812062,
+    "train_frauds": 5459,
+    "test_rows": 132136,
+    "test_fraud_rate": 0.02084216262033057,
+    "test_frauds": 2754,
+    "class_weight": 482.28869756365634,
+    "model_inputs": [
+      "type",
+      "amount",
+      "oldBalanceOrig",
+      "newBalanceOrig",
+      "oldBalanceDest",
+      "newBalanceDest",
+      "hour",
+      "errorBalanceOrig",
+      "errorBalanceDest"
+    ]
+  },
+  "models": {
+    "Baseline (200,000 TRANSFER rule)": {
+      "PR-AUC": 0.02830419491619085,
+      "ROC-AUC": 0.5888378934337838,
+      "Recall at 99% precision": 0.0
+    },
+    "Two-question tree": {
+      "PR-AUC": 0.4892249183638353,
+      "ROC-AUC": 0.8694425812212904,
+      "Recall at 99% precision": 0.0
+    },
+    "XGBoost, class-weighted": {
+      "PR-AUC": 0.9988932560103442,
+      "ROC-AUC": 0.9990236110085343,
+      "Recall at 99% precision": 0.9989106753812637
+    },
+    "Logistic regression": {
+      "PR-AUC": 0.7900645153394505,
+      "ROC-AUC": 0.9795348468868379,
+      "Recall at 99% precision": 0.4502541757443718
+    },
+    "Random forest": {
+      "PR-AUC": 0.9999998682002882,
+      "ROC-AUC": 0.9999999971935185,
+      "Recall at 99% precision": 1.0
+    },
+    "LightGBM": {
+      "PR-AUC": 0.03380077772346271,
+      "ROC-AUC": 0.6955801980920258,
+      "Recall at 99% precision": 0.0
+    },
+    "XGBoost + SMOTE": {
+      "PR-AUC": 0.9994562148312551,
+      "ROC-AUC": 0.9999886028781008,
+      "Recall at 99% precision": 0.9949164851125636
+    }
+  },
+  "cut_off": {
+    "precision_floor": 0.99,
+    "operating_threshold": 0.3602186441421509,
+    "precision": 0.990280777537797,
+    "recall": 0.9989106753812637,
+    "frauds_missed": 3,
+    "false_alarms": 27,
+    "cost_ratio": 10,
+    "cheapest_threshold": 0.9600000000000001,
+    "cheapest_missed": 3,
+    "cheapest_false_alarms": 2,
+    "real_fraud_rate": 0.002964544224336551,
+    "false_alarms_per_million_at_real_rate": 208.06570702217397,
+    "precision_at_real_fraud_rate": 0.9343513024872899
+  },
+  "periods": [
+    {
+      "hours": "491-560",
+      "transactions": 50526,
+      "frauds": 726,
+      "PR-AUC": 1.0,
+      "precision": 0.9877551020408163,
+      "recall": 1.0
+    },
+    {
+      "hours": "561-630",
+      "transactions": 43619,
+      "frauds": 764,
+      "PR-AUC": 0.9985758354432643,
+      "precision": 0.9857881136950905,
+      "recall": 0.9986910994764397
+    },
+    {
+      "hours": "631-700",
+      "transactions": 32774,
+      "frauds": 774,
+      "PR-AUC": 0.9974788000978526,
+      "precision": 0.9910141206675225,
+      "recall": 0.9974160206718347
+    },
+    {
+      "hours": "701-743",
+      "transactions": 5217,
+      "frauds": 490,
+      "PR-AUC": 1.0,
+      "precision": 1.0,
+      "recall": 1.0
+    }
+  ],
+  "impact": {
+    "test_fraud_value": 4190812449.6600003,
+    "screens": {
+      "No screening": {
+        "frauds caught": 0,
+        "frauds missed": 2754,
+        "fraud value stopped": 0.0,
+        "share of fraud value stopped": 0.0,
+        "honest customers frozen": 0,
+        "honest value frozen": 0.0
+      },
+      "Built-in flag (isFlaggedFraud)": {
+        "frauds caught": 10,
+        "frauds missed": 2744,
+        "fraud value stopped": 46474810.66,
+        "share of fraud value stopped": 0.011089689939183626,
+        "honest customers frozen": 0,
+        "honest value frozen": 0.0
+      },
+      "200,000 TRANSFER rule": {
+        "frauds caught": 932,
+        "frauds missed": 1822,
+        "fraud value stopped": 2081391981.6100001,
+        "share of fraud value stopped": 0.49665596029687825,
+        "honest customers frozen": 20797,
+        "honest value frozen": 19571928624.879997
+      },
+      "Two-question tree": {
+        "frauds caught": 1367,
+        "frauds missed": 1387,
+        "fraud value stopped": 2072168819.5,
+        "share of fraud value stopped": 0.49445515503040816,
+        "honest customers frozen": 79,
+        "honest value frozen": 33323426.050000004
+      },
+      "XGBoost, 99%-precision cut-off (0.36)": {
+        "frauds caught": 2751,
+        "frauds missed": 3,
+        "fraud value stopped": 4186618488.9,
+        "share of fraud value stopped": 0.9989992487589512,
+        "honest customers frozen": 27,
+        "honest value frozen": 4971209.31
+      },
+      "XGBoost, cheapest cut-off (0.96)": {
+        "frauds caught": 2751,
+        "frauds missed": 3,
+        "fraud value stopped": 4186618488.9,
+        "share of fraud value stopped": 0.9989992487589512,
+        "honest customers frozen": 2,
+        "honest value frozen": 432694.16
+      }
+    }
+  },
+  "shap_mean_abs": {
+    "newBalanceOrig": 16.01542854309082,
+    "errorBalanceOrig": 10.263185501098633,
+    "oldBalanceDest": 4.498185634613037,
+    "oldBalanceOrig": 3.115870475769043,
+    "amount": 2.065016508102417,
+    "newBalanceDest": 1.6062129735946655,
+    "errorBalanceDest": 0.6220749020576477,
+    "hour": 0.47626790404319763,
+    "type": 0.14797964692115784
+  }
+}
