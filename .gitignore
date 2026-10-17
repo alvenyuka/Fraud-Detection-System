@@ -86,3 +86,10 @@ models/
 # ============================================================
 *.log
 logs/
+
+# Vercel link for the live demo (deployed from the repository root, see demo/README.md)
+.vercel/
+.env*.local
+
+.vercel
+.env*

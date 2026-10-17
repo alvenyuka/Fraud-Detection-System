@@ -1,0 +1,34 @@
+# Deploy only the live page (demo/index.html) and its scoring function (api/score.py).
+# Everything else stays out of the upload, and because requirements*.txt is excluded Vercel
+# installs no Python dependencies: api/score.py is stdlib-only by design.
+.git
+.github
+__pycache__
+.pytest_cache
+data
+model
+figures
+figs
+docs
+tests
+src
+dashboard
+outputs
+notes
+*.ipynb
+*.pkl
+*.md
+*.txt
+*.svg
+*.toml
+*.cfg
+*.ini
+*.lock
+Makefile
+LICENSE
+conftest.py
+pytest.ini
+build_notebook.py
+requirements.txt
+requirements-lock.txt
+demo/README.md

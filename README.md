@@ -9,7 +9,7 @@ million simulated PaySim transactions, with a live scoring demo.
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
 [![tests](https://github.com/alvenyuka/Fraud-Detection-System/actions/workflows/ci.yml/badge.svg)](https://github.com/alvenyuka/Fraud-Detection-System/actions/workflows/ci.yml)
 
-**Try it:** [live scoring page](https://fraud-detection-alven.vercel.app) · [dashboard](https://fraud-detection-system-kmeuq7hku8tglnxdpmalfk.streamlit.app/) (free host, allow about 30 seconds to wake)
+**Try it:** [live scoring page](https://fraud-detection-alven.vercel.app), which scores with the shipped model. The Streamlit dashboard runs locally (`make dashboard`); its public host was retired.
 
 ![Fraud value on the holdout by screening method: the built-in flag stops 1.1%, the model 99.98%](figures/fraud_value_stopped.png)
 
