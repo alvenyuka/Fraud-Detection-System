@@ -161,10 +161,17 @@ def score_transaction(txn: dict) -> dict:
     """
     m = load_model()
     features = engineer_features(txn)
-    values = [features[name] for name in m["feature_names"]]
-    margin = m["base_margin"] + sum(eval_tree(t, values) for t in m["trees"])
+    try:
+        values = [features[name] for name in m["feature_names"]]
+        margin = m["base_margin"] + sum(eval_tree(t, values) for t in m["trees"])
+    except (KeyError, IndexError, TypeError) as exc:
+        # A malformed export (missing node key, bad child index) is a server fault, not bad input.
+        raise ModelUnavailable(UNAVAILABLE_MESSAGE) from exc
     raw_prob = 1.0 / (1.0 + math.exp(-margin))
-    fraud_probability = isotonic_predict(raw_prob)
+    try:
+        fraud_probability = isotonic_predict(raw_prob)
+    except (KeyError, IndexError, TypeError) as exc:
+        raise ModelUnavailable(UNAVAILABLE_MESSAGE) from exc
     return {
         "fraud_probability": fraud_probability,
         "flagged": fraud_probability >= m["operating_threshold"],

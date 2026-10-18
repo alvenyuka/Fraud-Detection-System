@@ -123,6 +123,16 @@ def test_a_failed_model_fetch_returns_json_503(score, broken_fetch):
     assert payload == {"error": "Model temporarily unavailable, please retry"}
 
 
+def test_a_malformed_export_returns_json_503_not_400(score, monkeypatch):
+    good = score.load_model()
+    broken = dict(good, trees=[{"no_such_key": 0}])
+    monkeypatch.setattr(score, "load_model", lambda: broken)
+    status, headers, payload = _call(score, "POST", json.dumps(VALID).encode())
+    assert status == 503
+    assert headers["Retry-After"] == "5"
+    assert payload == {"error": "Model temporarily unavailable, please retry"}
+
+
 def test_a_failed_fetch_is_not_cached(score, broken_fetch):
     _call(score, "POST", json.dumps(VALID).encode())
     _call(score, "POST", json.dumps(VALID).encode())
