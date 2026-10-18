@@ -44,19 +44,53 @@ _MODEL_URL = (
 # loader at a local model_export.json instead. It is unset in the deployment,
 # which keeps the serverless path exactly as it was.
 _LOCAL_EXPORT = os.environ.get("FRAUD_MODEL_EXPORT_PATH")
-if _LOCAL_EXPORT:
-    with open(_LOCAL_EXPORT, encoding="utf-8") as fh:
-        _MODEL = json.load(fh)
-else:
-    with urllib.request.urlopen(_MODEL_URL, timeout=10) as resp:
-        _MODEL = json.loads(resp.read())
 
-FEATURE_NAMES = _MODEL["feature_names"]
-BASE_MARGIN = math.log(_MODEL["base_score"] / (1 - _MODEL["base_score"]))
-TREES = _MODEL["trees"]
-ISO_X = _MODEL["isotonic_x"]
-ISO_Y = _MODEL["isotonic_y"]
-OPERATING_THRESHOLD = _MODEL["operating_threshold"]
+UNAVAILABLE_MESSAGE = "Model temporarily unavailable, please retry"
+
+
+class ModelUnavailable(RuntimeError):
+    """The model export could not be fetched or read, so nothing can be scored."""
+
+
+# Filled by load_model() on the first successful load and reused afterwards. A
+# failed load is not cached, so the next request tries again.
+_MODEL_STATE = None
+
+
+def _read_export() -> dict:
+    if _LOCAL_EXPORT:
+        with open(_LOCAL_EXPORT, encoding="utf-8") as fh:
+            return json.load(fh)
+    with urllib.request.urlopen(_MODEL_URL, timeout=10) as resp:
+        return json.loads(resp.read())
+
+
+def load_model() -> dict:
+    """Return the parsed model, fetching it on first use; raise ModelUnavailable on any failure."""
+    global _MODEL_STATE
+    if _MODEL_STATE is None:
+        try:
+            model = _read_export()
+            state = {
+                "feature_names": model["feature_names"],
+                "base_margin": math.log(model["base_score"] / (1 - model["base_score"])),
+                "trees": model["trees"],
+                "iso_x": model["isotonic_x"],
+                "iso_y": model["isotonic_y"],
+                "operating_threshold": model["operating_threshold"],
+            }
+        except Exception as exc:  # noqa: BLE001 -- network, HTTP, JSON or shape: all mean "no model"
+            raise ModelUnavailable(UNAVAILABLE_MESSAGE) from exc
+        _MODEL_STATE = state
+    return _MODEL_STATE
+
+
+# Load at cold start as before, so the first request is not slower; if GitHub
+# raw is unreachable now, the first request retries instead of the import failing.
+try:
+    load_model()
+except ModelUnavailable:
+    pass
 
 EPS = 1e-8
 
@@ -102,6 +136,8 @@ def eval_tree(tree: dict, values: list) -> float:
 
 def isotonic_predict(raw_prob: float) -> float:
     """Map a raw probability through the exported isotonic calibration (linear between breakpoints)."""
+    m = load_model()
+    ISO_X, ISO_Y = m["iso_x"], m["iso_y"]
     x_min, x_max = ISO_X[0], ISO_X[-1]
     x = min(max(raw_prob, x_min), x_max)
     # a linear scan is fine: the export holds a few dozen breakpoints
@@ -123,15 +159,16 @@ def score_transaction(txn: dict) -> dict:
     Returns the calibrated fraud probability, whether it reaches the operating
     threshold, the threshold, and the share of the sender's balance moved.
     """
+    m = load_model()
     features = engineer_features(txn)
-    values = [features[name] for name in FEATURE_NAMES]
-    margin = BASE_MARGIN + sum(eval_tree(t, values) for t in TREES)
+    values = [features[name] for name in m["feature_names"]]
+    margin = m["base_margin"] + sum(eval_tree(t, values) for t in m["trees"])
     raw_prob = 1.0 / (1.0 + math.exp(-margin))
     fraud_probability = isotonic_predict(raw_prob)
     return {
         "fraud_probability": fraud_probability,
-        "flagged": fraud_probability >= OPERATING_THRESHOLD,
-        "operating_threshold": OPERATING_THRESHOLD,
+        "flagged": fraud_probability >= m["operating_threshold"],
+        "operating_threshold": m["operating_threshold"],
         "orig_drain_ratio": features["orig_drain_ratio"],
     }
 
@@ -181,10 +218,23 @@ class handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
 
+    def _send_json(self, status: int, payload: dict, extra_headers: dict = None):
+        self.send_response(status)
+        self._cors_headers()
+        self.send_header("Content-Type", "application/json")
+        for key, value in (extra_headers or {}).items():
+            self.send_header(key, value)
+        self.end_headers()
+        self.wfile.write(json.dumps(payload).encode())
+
     def do_OPTIONS(self):
         self.send_response(204)
         self._cors_headers()
         self.end_headers()
+
+    def do_GET(self):
+        self._send_json(405, {"error": "Use POST with a JSON transaction to get a fraud score"},
+                        {"Allow": "POST, OPTIONS"})
 
     def do_POST(self):
         try:
@@ -193,14 +243,10 @@ class handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length) or b"{}")
             txn = parse_transaction(body)
             result = score_transaction(txn)
-            self.send_response(200)
-            self._cors_headers()
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps(result).encode())
+        except ModelUnavailable:
+            self._send_json(503, {"error": UNAVAILABLE_MESSAGE}, {"Retry-After": "5"})
+            return
         except Exception as exc:  # noqa: BLE001 -- return the error to the caller, not a 500 wall
-            self.send_response(400)
-            self._cors_headers()
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"error": str(exc)}).encode())
+            self._send_json(400, {"error": str(exc)})
+            return
+        self._send_json(200, result)

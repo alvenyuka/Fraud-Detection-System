@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Fraud Detection System | Alven Yuka</title>
 <meta name="description" content="Mobile-money fraud detection evaluated the way a risk team would: a time-based holdout, walk-forward validation, a cost-based threshold, and a live scoring demo of the shipped model. It stops 99.98% of holdout fraud value at 99.9% precision.">
-<meta name="theme-color" content="#f5f6f2">
+<meta name="theme-color" content="#ffffff">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2304040a'/%3E%3Ccircle cx='32' cy='32' r='12' fill='%23e8ff47'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://api.fontshare.com" crossorigin>
 <link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=clash-display@500,600&f[]=cabinet-grotesk@400,500,700&display=swap">
@@ -45,17 +45,17 @@ code{font-family:var(--mono);font-size:.82em;color:var(--fg-2);background:rgba(1
 .hero::before{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 60% 50% at 75% 30%,rgba(217,242,58,.30),transparent 70%)}
 .hero-inner{position:relative;padding-block:clamp(3.5rem,8vw,6rem) clamp(3rem,6vw,4.5rem)}
 .hero .pill{margin-bottom:1.75rem}
-.hero h1{font-size:clamp(2.4rem,1rem+5.2vw,5.4rem);line-height:.98;letter-spacing:-.03em;max-width:16ch}
-.lede{margin-top:1.75rem;color:var(--fg-2);font-size:clamp(1.0625rem,.9rem+.5vw,1.2rem);max-width:62ch}
+.hero h1{font-size:clamp(2.4rem,1rem + 5.2vw,5.4rem);line-height:.98;letter-spacing:-.03em;max-width:16ch}
+.lede{margin-top:1.75rem;color:var(--fg-2);font-size:clamp(1.0625rem,.9rem + .5vw,1.2rem);max-width:62ch}
 .actions{display:flex;flex-wrap:wrap;gap:.75rem;margin-top:2rem}
 .stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1rem;margin-top:3rem;padding-top:2rem;border-top:1px solid var(--border)}
-.stat .v{font-family:var(--display);font-size:clamp(1.6rem,1rem+1.6vw,2.4rem);color:var(--accent);line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.stat .v{font-family:var(--display);font-size:clamp(1.6rem,1rem + 1.6vw,2.4rem);color:var(--accent);line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .stat .k{display:block;margin-top:.5rem;font-family:var(--mono);font-size:.72rem;color:var(--muted)}
 .section{padding-block:clamp(3.5rem,7vw,6rem)}
 .section+.section{border-top:1px solid var(--border)}
 .section-head{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:1.25rem 4rem;align-items:end;margin-bottom:clamp(2rem,4vw,3rem)}
 .section-head .pill{margin-bottom:1.1rem}
-.section-head h2{font-size:clamp(1.9rem,1.2rem+2.6vw,3.4rem);letter-spacing:-.03em;line-height:1}
+.section-head h2{font-size:clamp(1.9rem,1.2rem + 2.6vw,3.4rem);letter-spacing:-.03em;line-height:1}
 .section-head>p{color:var(--muted);max-width:56ch}
 .card{background:var(--card);border:1px solid var(--border);border-radius:1rem;padding:clamp(1.25rem,3vw,2rem);box-shadow:0 1px 2px rgba(18,22,31,.05),0 12px 32px -16px rgba(18,22,31,.14)}
 .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.25rem}
@@ -69,7 +69,7 @@ code{font-family:var(--mono);font-size:.82em;color:var(--fg-2);background:rgba(1
 .presets button{padding:.4rem .85rem;border-radius:999px;border:1px solid var(--border-strong);background:rgba(18,22,31,.02);color:var(--fg-2);font-family:var(--mono);font-size:.72rem;cursor:pointer}
 .presets button:hover{border-color:var(--fg)}
 .result{border-left:2px solid var(--border-strong);padding-left:1.5rem;min-height:12rem}
-.result .prob{font-family:var(--display);font-size:clamp(2.6rem,1.5rem+3vw,4.2rem);line-height:1;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.result .prob{font-family:var(--display);font-size:clamp(2.6rem,1.5rem + 3vw,4.2rem);line-height:1;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
 .result .prob.bad{color:var(--orange)}.result .prob.good{color:var(--accent)}
 .result .flag{display:inline-block;margin-top:.9rem;padding:.4rem .9rem;border-radius:999px;font-family:var(--mono);font-size:.75rem}
 .flag.bad{background:rgba(194,65,12,.14);color:var(--orange)}.flag.good{background:var(--lime-dim);color:var(--accent)}
@@ -103,6 +103,21 @@ tr.hl td{color:var(--accent);font-weight:600}
 @media (max-width:900px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.section-head,.grid2,.scorer,.steps,.gallery{grid-template-columns:1fr}.nav{display:none}.result{border-left:0;padding-left:0;border-top:1px solid var(--border);padding-top:1.25rem;min-height:0}}
 @media (max-width:640px){.fields{grid-template-columns:1fr}.btn{width:100%}.nav-cta{width:auto}}
 @media (prefers-reduced-motion:reduce){.pulse{animation:none}html{scroll-behavior:auto}}
+/* Bright theme, 2026-10-18: white page, charcoal ink, no hero grid or glow, larger and darker small text. */
+body{font-weight:500}
+:root{--bg:#ffffff;--bg-2:#f6f7f3;--card:#ffffff;--fg:#1d222b;--fg-2:#323944;--muted:#4a5361;--faint:#5a6372;--border:rgba(29,34,43,.11);--border-strong:rgba(29,34,43,.20)}
+.top{background:rgba(255,255,255,.9)}
+.grid-bg,.hero::before{display:none}
+.hero h1{font-size:clamp(2.2rem,1rem + 4.2vw,4.4rem);color:var(--fg)}
+.section-head h2{font-size:clamp(1.75rem,1.1rem + 2.2vw,3rem)}
+.pill{font-size:.8125rem;background:var(--bg-2)}
+.stat .k,th,.fields label,.presets button,.gallery figcaption,.chart text{font-size:.8125rem}
+.chart text{font-size:12px}
+.note,.placeholder,summary .iv,.reason .pts{font-size:.875rem;color:var(--muted)}
+th{color:var(--muted)}
+.foot{font-size:.8125rem;color:var(--muted)}
+.card{box-shadow:0 1px 2px rgba(29,34,43,.04),0 8px 24px -14px rgba(29,34,43,.12)}
+.stat .v{font-size:clamp(1.5rem,1rem + 1vw,1.95rem);white-space:nowrap;letter-spacing:-.03em}
 </style>
 </head>
 <body>
@@ -145,7 +160,7 @@ tr.hl td{color:var(--accent);font-weight:600}
         <button type="button" data-preset="950000,950000,0,120000,1070000">full drain, recipient credited</button>
       </div>
       <div class="actions"><button id="score-btn" class="btn btn-lime" type="button">Score this transaction</button></div>
-      <p class="note">Amounts are in PaySim's simulated currency units. The five fields are the ones the model sees, together with the balance-discrepancy features it derives from them.</p>
+      <p class="note">Amounts are in PaySim's simulated currency units. The model sees the amount and four features derived from these five fields.</p>
     </div>
     <div class="result" id="result" aria-live="polite">
       <p class="placeholder">The score, the decision at the shipped operating threshold, and the share of the sender's balance moved will appear here.</p>
@@ -203,7 +218,7 @@ tr.hl td{color:var(--accent);font-weight:600}
     <li><strong>The threshold is a business choice, and it drifts.</strong> On the holdout the cost-optimal cut-off (0.8852) and a 0.5 cut-off make the same decisions, but across the walk-forward folds the cost-optimal threshold ranged from 0.021 to 1.00, and the fold with the lowest one reached only 88.1% precision. The near-perfect PR-AUC hides that no single fixed threshold is clearly right across the whole horizon. A deployment would revisit it periodically.</li>
     <li><strong>Destination-balance blind spot.</strong> The model cannot see whether the destination account's balance was updated consistently, because PaySim's CASH_OUT type does not strictly enforce destination-side accounting. A rule-based patch was tested on an earlier version and rejected because it multiplied false alarms on the training period.</li>
     <li><strong>Simulated data.</strong> PaySim reproduces the balance patterns of one mobile-money operator's logs, not the operator's live traffic. The headline precision depends on fraud being 2.1% of the holdout window; at the simulator's overall rate of 0.13% the same model would raise more false alarms per fraud caught.</li>
-    <li><strong>A full drain scores high almost regardless.</strong> Moving close to 100% of the sender's balance is the documented fraud pattern in PaySim, so a legitimate account closure can still be flagged. The scorer above says so when it happens.</li>
+    <li><strong>A full drain scores high.</strong> Emptying the sender's account is the documented fraud pattern in PaySim, so a legitimate account closure can still be flagged: in the model card's test, moving 99% of a balance scores 0.0000% and moving 100% scores 90.24%. The score is a step, not a slope, so small changes to the sender's balances can swing it sharply. The scorer above says so when a flagged transaction empties the account.</li>
   </ul></div>
 </section>
 
@@ -220,13 +235,15 @@ tr.hl td{color:var(--accent);font-weight:600}
   var ids = ['f-amount','f-old-orig','f-new-orig','f-old-dest','f-new-dest'];
   var result = document.getElementById('result');
   function fmt(x, d){ return Number(x).toLocaleString('en-US', {maximumFractionDigits: d==null?0:d}); }
-  document.querySelectorAll('.presets button').forEach(function(b){
-    b.addEventListener('click', function(){
-      var v = b.getAttribute('data-preset').split(',');
-      ids.forEach(function(id, i){ document.getElementById(id).value = v[i]; });
-    });
-  });
-  document.getElementById('score-btn').addEventListener('click', async function () {
+  var running = 0;
+  function showError(msg){
+    var p = document.createElement('p');
+    p.className = 'err';
+    p.textContent = msg;
+    result.innerHTML = '';
+    result.appendChild(p);
+  }
+  async function scoreNow(){
     var payload = {
       amount: parseFloat(document.getElementById('f-amount').value),
       oldbalanceOrg: parseFloat(document.getElementById('f-old-orig').value),
@@ -234,26 +251,51 @@ tr.hl td{color:var(--accent);font-weight:600}
       oldbalanceDest: parseFloat(document.getElementById('f-old-dest').value),
       newbalanceDest: parseFloat(document.getElementById('f-new-dest').value)
     };
+    var mine = ++running;
     result.innerHTML = '<p class="placeholder">Scoring…</p>';
+    var res, data = null;
     try {
-      var res = await fetch('/api/score', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-      var data = await res.json();
-      if (!res.ok) { throw new Error(data.error || 'Scoring failed'); }
-      var p = data.fraud_probability, bad = !!data.flagged;
-      var html = '<div class="prob ' + (bad?'bad':'good') + '">' + (p*100).toFixed(p*100 >= 10 ? 1 : 3) + '%</div>' +
-        '<span class="flag ' + (bad?'bad':'good') + '">' + (bad ? 'flagged as fraud' : 'looks legitimate') + '</span>' +
-        '<dl><dt>Fraud probability</dt><dd>' + (p*100).toFixed(4) + '%</dd>' +
-        '<dt>Operating threshold</dt><dd>' + (data.operating_threshold*100).toFixed(2) + '%</dd>' +
-        '<dt>Share of sender balance moved</dt><dd>' + (data.orig_drain_ratio*100).toFixed(1) + '%</dd>' +
-        '<dt>Amount</dt><dd>' + fmt(payload.amount) + '</dd></dl>';
-      if (data.orig_drain_ratio >= 0.999) {
-        html += '<p class="note warn">This transaction drains close to 100% of the sender’s balance, which scores high in this model almost regardless of anything else. That is a documented property of PaySim’s fraud pattern, not a bug. See MODEL_CARD.md.</p>';
-      }
-      result.innerHTML = html;
+      res = await fetch('/api/score', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
     } catch (err) {
-      result.innerHTML = '<p class="err">' + (err && err.message ? err.message : 'Scoring failed') + '</p>';
+      if (mine === running) { showError('Could not reach the scoring service. Check your connection and try again.'); }
+      return;
     }
+    try { data = JSON.parse(await res.text()); } catch (err) { data = null; }
+    // A later click has started its own request; let that one draw the result.
+    if (mine !== running) { return; }
+    if (!res.ok || !data || typeof data.fraud_probability !== 'number') {
+      var msg = (data && typeof data.error === 'string') ? data.error
+        : 'The scoring service returned an unexpected response (HTTP ' + res.status + '). Please try again in a moment.';
+      showError(msg);
+      return;
+    }
+    var p = data.fraud_probability, bad = !!data.flagged;
+    var html = '<div class="prob ' + (bad?'bad':'good') + '">' + (p*100).toFixed(p*100 >= 10 ? 1 : 3) + '%</div>' +
+      '<span class="flag ' + (bad?'bad':'good') + '">' + (bad ? 'flagged as fraud' : 'looks legitimate') + '</span>' +
+      '<dl><dt>Fraud probability</dt><dd>' + (p*100).toFixed(4) + '%</dd>' +
+      '<dt>Operating threshold</dt><dd>' + (data.operating_threshold*100).toFixed(2) + '%</dd>' +
+      '<dt>Share of sender balance moved</dt><dd>' + (data.orig_drain_ratio*100).toFixed(1) + '%</dd>' +
+      '<dt>Amount</dt><dd>' + fmt(payload.amount) + '</dd></dl>';
+    // Explanations follow the model's decision; they never argue with it.
+    var fullDrain = data.orig_drain_ratio >= 0.999;
+    var gap = payload.oldbalanceOrg - payload.amount - payload.newbalanceOrig;
+    if (bad && fullDrain) {
+      html += '<p class="note warn">Flagged mainly because the whole sender balance moved. Emptying the account is the pattern PaySim’s fraud almost always follows, so a legitimate account closure can be flagged the same way. See MODEL_CARD.md.</p>';
+    } else if (!bad && fullDrain) {
+      html += '<p class="note">The whole sender balance moved, but the model scored this below its threshold' +
+        (gap !== 0 ? ': the sender’s balances do not add up exactly (before minus amount minus after is ' + fmt(gap, 2) + ').' : '.') + '</p>';
+    }
+    html += '<p class="note">This model leans heavily on two sender-side signals: whether the amount equals the sender’s whole opening balance, and whether the sender’s balances add up (together 77% of SHAP attribution). Small changes in those fields can swing the score sharply; in the model card’s test, moving 99% of a balance scores 0.0000% and moving 100% scores 90.24%.</p>';
+    result.innerHTML = html;
+  }
+  document.querySelectorAll('.presets button').forEach(function(b){
+    b.addEventListener('click', function(){
+      var v = b.getAttribute('data-preset').split(',');
+      ids.forEach(function(id, i){ document.getElementById(id).value = v[i]; });
+      scoreNow();
+    });
   });
+  document.getElementById('score-btn').addEventListener('click', scoreNow);
 })();
 </script>
 </body>

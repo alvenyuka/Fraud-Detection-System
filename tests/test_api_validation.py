@@ -74,3 +74,85 @@ def test_oversized_bodies_are_rejected(score):
     score.check_body_length(score.MAX_BODY_BYTES)
     with pytest.raises(ValueError, match="too large"):
         score.check_body_length(score.MAX_BODY_BYTES + 1)
+
+
+# The handler's error paths. The export is fetched from GitHub raw on a cold
+# start; when that fails the API must answer a JSON 503 rather than crash, and
+# must try again on the next request instead of caching the failure.
+import io  # noqa: E402
+
+
+def _call(score, method, body=b""):
+    """Drive the handler class without a socket and return (status, headers, json body)."""
+    h = score.handler.__new__(score.handler)
+    h.rfile = io.BytesIO(body)
+    h.wfile = io.BytesIO()
+    h.headers = {"Content-Length": str(len(body))}
+    h.request_version = "HTTP/1.1"
+    h.requestline = f"{method} /api/score HTTP/1.1"
+    h.command = method
+    h.client_address = ("127.0.0.1", 0)
+    h.log_message = lambda *args: None
+    getattr(h, f"do_{method}")()
+    head, _, payload = h.wfile.getvalue().partition(b"\r\n\r\n")
+    lines = head.decode("latin-1").split("\r\n")
+    status = int(lines[0].split()[1])
+    headers = dict(line.split(": ", 1) for line in lines[1:])
+    return status, headers, json.loads(payload)
+
+
+@pytest.fixture
+def broken_fetch(score, monkeypatch):
+    """Empty the model cache and make every fetch from GitHub raw fail."""
+    calls = []
+
+    def fail(*args, **kwargs):
+        calls.append(args)
+        raise OSError("simulated network failure")
+
+    monkeypatch.setattr(score, "_MODEL_STATE", None)
+    monkeypatch.setattr(score, "_LOCAL_EXPORT", None)
+    monkeypatch.setattr(score.urllib.request, "urlopen", fail)
+    return calls
+
+
+def test_a_failed_model_fetch_returns_json_503(score, broken_fetch):
+    status, headers, payload = _call(score, "POST", json.dumps(VALID).encode())
+    assert status == 503
+    assert headers["Content-Type"] == "application/json"
+    assert payload == {"error": "Model temporarily unavailable, please retry"}
+
+
+def test_a_failed_fetch_is_not_cached(score, broken_fetch):
+    _call(score, "POST", json.dumps(VALID).encode())
+    _call(score, "POST", json.dumps(VALID).encode())
+    assert len(broken_fetch) == 2
+    assert score._MODEL_STATE is None
+
+
+def test_a_successful_load_is_cached(score, monkeypatch):
+    monkeypatch.setattr(score, "_MODEL_STATE", None)
+    first = score.load_model()
+    monkeypatch.setattr(score.urllib.request, "urlopen",
+                        lambda *a, **k: pytest.fail("cached model was fetched again"))
+    monkeypatch.setattr(score, "_LOCAL_EXPORT", None)
+    assert score.load_model() is first
+
+
+def test_post_scores_a_valid_body(score):
+    status, _, payload = _call(score, "POST", json.dumps(VALID).encode())
+    assert status == 200
+    assert set(payload) == {"fraud_probability", "flagged", "operating_threshold", "orig_drain_ratio"}
+
+
+def test_bad_input_is_still_a_400(score):
+    status, _, payload = _call(score, "POST", b'{"amount": 1}')
+    assert status == 400
+    assert "Missing fields" in payload["error"]
+
+
+def test_get_returns_json_405(score):
+    status, headers, payload = _call(score, "GET")
+    assert status == 405
+    assert headers["Allow"] == "POST, OPTIONS"
+    assert "POST" in payload["error"]
