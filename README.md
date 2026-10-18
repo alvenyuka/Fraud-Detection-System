@@ -1,10 +1,12 @@
-# Fraud Detection System: stopping mobile-money fraud before the money leaves
+# Mobile-Money Fraud Detection
 
-**A calibrated XGBoost model that flags fraudulent mobile-money transfers so they can be stopped before the
-money leaves. Trained on 6.36 million simulated PaySim transactions and tested on 132,136 later ones it had
-never seen, it stopped 99.98% of the fraud value (the simulator's built-in flag stopped 1.1%), catching 2,742
-of 2,754 frauds while wrongly freezing 3 honest customers. Walk-forward validation over four later windows, a
-live scoring API and 56 tests in CI.**
+Stops 99.98% of fraud value on unseen transactions and freezes 3 honest customers.
+
+| At a glance | |
+|---|---|
+| **Who decides** | A mobile-money fraud team deciding which transfers to freeze. |
+| **Result** | On 132,136 later transactions it never saw: 2,742 of 2,754 frauds caught, 99.98% of the fraud value stopped, 3 honest customers frozen. |
+| **Proof** | Calibrated XGBoost on 6.36M PaySim transactions, walk-forward validation over four later windows, a live scoring API and 56 tests in CI. |
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
@@ -67,6 +69,8 @@ flowchart LR
 scikit-learn or XGBoost differ from the versions the model was trained with.
 
 ## Results
+
+A calibrated XGBoost model that flags fraudulent mobile-money transfers so they can be stopped before the money leaves. Trained on 6.36 million simulated PaySim transactions and tested on 132,136 later ones it had never seen, it stopped 99.98% of the fraud value (the simulator's built-in flag stopped 1.1%), catching 2,742 of 2,754 frauds while wrongly freezing 3 honest customers. Walk-forward validation over four later windows, a live scoring API and 56 tests in CI.
 
 - 6,362,620 transactions in the simulation; 2,638,273 in the training period (steps 1 to 490).
 - 132,136 held-out transactions (steps 491 to 743) with 2,754 frauds, scored once.
