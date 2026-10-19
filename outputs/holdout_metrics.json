@@ -1,0 +1,18 @@
+{
+  "what": "Holdout metrics of the shipped model, recomputed from the raw PaySim CSV without retraining",
+  "computed_on": "2026-10-19",
+  "model": "model/xgb_fraud_model.pkl (trained_on 2026-10-02)",
+  "data": "data/PS_20174392719_1491204439457_log.csv (6,362,620 rows; TRANSFER and CASH_OUT kept: 2,770,409)",
+  "split": "time_based_split at SPLIT_STEP 490: holdout = steps after 490",
+  "method": "features.load_and_filter -> features.engineer_features -> train.time_based_split; model.predict_proba on the holdout; sklearn average_precision_score and roc_auc_score; threshold from the pickle",
+  "holdout_rows": 132136,
+  "holdout_frauds": 2754,
+  "pr_auc": 0.9984,
+  "pr_auc_unrounded": 0.9983665042662858,
+  "roc_auc": 1.0,
+  "operating_threshold": 0.8852,
+  "frauds_caught": 2742,
+  "frauds_missed": 12,
+  "false_alarms": 3,
+  "matches_metrics_stored_in_pickle": true
+}
