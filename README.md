@@ -43,7 +43,7 @@ I trained on the first 490 hours and scored the 132,136 TRANSFER and CASH_OUT tr
 |---|---:|---|
 | Recall | 99.6% (2,742 of 2,754) | Frauds caught |
 | Precision | 99.9% (3 false alarms) | Flags that were fraud |
-| PR-AUC | 0.9984 | Area under the precision-recall curve; 1.0 is perfect. Logged by `make train`, recorded in `MODEL_CARD.md` |
+| PR-AUC | 0.9984 | Area under the precision-recall curve; 1.0 is perfect. Recomputed from the CSV on 2026-10-19 without retraining: `outputs/holdout_metrics.json` |
 | Brier score | 0.000131 | Average squared error of the predicted probabilities; 0 is perfect. Logged by `make train`, recorded in `MODEL_CARD.md` |
 | Flag threshold | 0.8852 | Scores at or above this are flagged |
 | Walk-forward PR-AUC (4 windows) | 0.9971 ± 0.0020 | Ranking holds in later windows |
