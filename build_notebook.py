@@ -1192,8 +1192,8 @@ screens = {
     f"XGBoost, cheapest cut-off ({cutoffs[cheapest]:.2f})": xgb_scores >= cutoffs[cheapest],
 }
 outcomes = {}
-for name, flagged in screens.items():
-    outcomes[name] = screen_outcome(flagged)
+for name, screen_flags in screens.items():
+    outcomes[name] = screen_outcome(screen_flags)
 impact = pd.DataFrame.from_dict(outcomes, orient="index")
 print(f"test window: {len(y_test):,} transactions, {int(truth.sum()):,} frauds worth {total_fraud_value / 1e9:.2f} billion")
 shown = impact.copy()
