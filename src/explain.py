@@ -64,6 +64,11 @@ def get_raw_xgboost_model(artifact: dict):
     return first_fold.estimator.estimator
 
 
+def get_importance_pct(row: dict) -> float:
+    """Sort key: a feature's importance percentage."""
+    return row["importance_pct"]
+
+
 def save_feature_importance(raw_xgb_model, X_sample: pd.DataFrame) -> None:
     """Mean |SHAP| per feature, as a percentage. Shows whether one feature dominates."""
     explainer = shap.TreeExplainer(raw_xgb_model)
@@ -71,10 +76,12 @@ def save_feature_importance(raw_xgb_model, X_sample: pd.DataFrame) -> None:
     mean_abs_shap = np.abs(shap_values.values).mean(axis=0)
     percentages = 100 * mean_abs_shap / mean_abs_shap.sum()
 
-    importance = sorted(
-        [{"feature": f, "importance_pct": round(float(p), 2)} for f, p in zip(FEATURE_COLS, percentages)],
-        key=lambda row: -row["importance_pct"],
-    )
+    importance = []
+    for feature, percentage in zip(FEATURE_COLS, percentages):
+        importance.append({"feature": feature, "importance_pct": round(float(percentage), 2)})
+
+    # Largest first. sorted() is stable, so equal values keep their original order.
+    importance = sorted(importance, key=get_importance_pct, reverse=True)
     out_path = DASHBOARD_DATA_DIR / "feature_importance.json"
     out_path.write_text(json.dumps(importance, indent=2))
     log.info("Feature importance saved -> %s", out_path)
@@ -108,10 +115,14 @@ def save_threshold_cost_curve(probs: np.ndarray, y_true: np.ndarray) -> None:
         missed_fraud = int(((preds == 0) & (y_true == 1)).sum())
         false_alarms = int(((preds == 1) & (y_true == 0)).sum())
         cost = COST_PER_MISSED_FRAUD * missed_fraud + COST_PER_FALSE_ALARM * false_alarms
+
+        # zero_division=0: at a very high threshold nothing is flagged, so precision is 0 rather than an error
+        precision = precision_score(y_true, preds, zero_division=0)
+        recall = recall_score(y_true, preds, zero_division=0)
         rows.append({
             "threshold": round(float(threshold), 4),
-            "precision": round(float(precision_score(y_true, preds, zero_division=0)), 4),
-            "recall": round(float(recall_score(y_true, preds, zero_division=0)), 4),
+            "precision": round(float(precision), 4),
+            "recall": round(float(recall), 4),
             "cost": cost,
         })
     result = pd.DataFrame(rows)
@@ -133,7 +144,8 @@ def explain(data_path: str) -> None:
     df = engineer_features(df)
     _, test_df = time_based_split(df, SPLIT_STEP)
 
-    X_test, y_test = test_df[FEATURE_COLS], test_df["isFraud"].to_numpy()
+    X_test = test_df[FEATURE_COLS]
+    y_test = test_df["isFraud"].to_numpy()
     log.info("Scoring %d held-out test rows with the shipped model ...", len(X_test))
     probs = artifact["model"].predict_proba(X_test)[:, 1]
 
@@ -149,9 +161,9 @@ def explain(data_path: str) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Generate dashboard diagnostic artifacts from the shipped model.")
-    p.add_argument("--data", required=True, metavar="CSV", help="Path to PaySim CSV.")
-    return p.parse_args()
+    parser = argparse.ArgumentParser(description="Generate dashboard diagnostic artifacts from the shipped model.")
+    parser.add_argument("--data", required=True, metavar="CSV", help="Path to PaySim CSV.")
+    return parser.parse_args()
 
 
 if __name__ == "__main__":

@@ -135,7 +135,7 @@ below it needs the 470MB PaySim CSV, and the notebook is the heavy one:
 | `make train` | yes | about a minute |
 | `make tune` | yes | 40 trials; the 2026-10-02 run took 4 hours on a machine shared with other jobs |
 | `make validate` | yes | under two minutes, four walk-forward folds |
-| the notebook, end to end | yes | 27 minutes for the stored run, peak memory 4.3 GB (`outputs/notebook_results.json`) |
+| the notebook, end to end | yes | 27 minutes for the stored run (peak memory was about 4.3 GB on the 2026-10 run) |
 
 The notebook is the analysis behind the pipeline, organised in four parts around three questions (which
 transfers are fraudulent, how much fraud value a model stops, how many honest customers it freezes). Part 1

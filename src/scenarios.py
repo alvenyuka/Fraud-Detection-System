@@ -52,43 +52,50 @@ DRAIN_SHARES = [0.10, 0.25, 0.50, 0.75, 0.90, 0.99, 1.00]
 def _score(model, rows: list[dict]) -> list[float]:
     """Fraud probabilities from `model` for transactions given as dicts of raw PaySim fields."""
     frame = engineer_features(pd.DataFrame(rows))
-    return [float(p) for p in model.predict_proba(frame[FEATURE_COLS])[:, 1]]
+    probabilities = model.predict_proba(frame[FEATURE_COLS])[:, 1]
+
+    scores = []
+    for probability in probabilities:
+        scores.append(float(probability))
+    return scores
 
 
 def diversion_sweep(model) -> list[dict]:
     """Sender fully drained; vary how much of it reaches the recipient."""
-    rows = [
-        {
+    rows = []
+    for share in CREDITED_SHARES:
+        rows.append({
             "amount": SENDER_BALANCE,
             "oldbalanceOrg": SENDER_BALANCE,
             "newbalanceOrig": 0.0,
             "oldbalanceDest": RECIPIENT_OPENING_BALANCE,
             "newbalanceDest": RECIPIENT_OPENING_BALANCE + SENDER_BALANCE * share,
-        }
-        for share in CREDITED_SHARES
-    ]
-    return [
-        {"credited_share": share, "fraud_probability": prob}
-        for share, prob in zip(CREDITED_SHARES, _score(model, rows))
-    ]
+        })
+    scores = _score(model, rows)
+
+    results = []
+    for share, score in zip(CREDITED_SHARES, scores):
+        results.append({"credited_share": share, "fraud_probability": score})
+    return results
 
 
 def drain_sweep(model) -> list[dict]:
     """Recipient credited in full; vary how much of the sender's balance moves."""
-    rows = [
-        {
+    rows = []
+    for share in DRAIN_SHARES:
+        rows.append({
             "amount": SENDER_BALANCE * share,
             "oldbalanceOrg": SENDER_BALANCE,
             "newbalanceOrig": SENDER_BALANCE * (1 - share),
             "oldbalanceDest": RECIPIENT_OPENING_BALANCE,
             "newbalanceDest": RECIPIENT_OPENING_BALANCE + SENDER_BALANCE * share,
-        }
-        for share in DRAIN_SHARES
-    ]
-    return [
-        {"drain_share": share, "fraud_probability": prob}
-        for share, prob in zip(DRAIN_SHARES, _score(model, rows))
-    ]
+        })
+    scores = _score(model, rows)
+
+    results = []
+    for share, score in zip(DRAIN_SHARES, scores):
+        results.append({"drain_share": share, "fraud_probability": score})
+    return results
 
 
 def partial_skim(model) -> dict:
@@ -153,7 +160,10 @@ def main() -> Path:
           f"{payload['partial_skim']['fraud_probability']:.4%}")
     threshold = payload["operating_threshold"]
     small = payload["small_full_drain"]
-    flagged = "flagged" if small["fraud_probability"] >= threshold else "not flagged"
+    if small["fraud_probability"] >= threshold:
+        flagged = "flagged"
+    else:
+        flagged = "not flagged"
     print(f"{small['description']}: {small['fraud_probability']:.4%} ({flagged} at {threshold:.4f})")
     print()
     print(f"wrote {OUTPUT_PATH}")

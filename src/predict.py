@@ -61,11 +61,11 @@ def version_mismatches(artifact: dict) -> list[str]:
     if not recorded:
         return ["artifact records no library versions"]
     installed = installed_versions()
-    return [
-        f"{lib}: trained with {recorded.get(lib)}, installed {installed[lib]}"
-        for lib in CHECKED_LIBRARIES
-        if recorded.get(lib) != installed[lib]
-    ]
+    mismatches = []
+    for library in CHECKED_LIBRARIES:
+        if recorded.get(library) != installed[library]:
+            mismatches.append(f"{library}: trained with {recorded.get(library)}, installed {installed[library]}")
+    return mismatches
 
 
 def load_model(model_path: str, strict: bool = False) -> dict:
@@ -108,11 +108,14 @@ def score_dataframe(df: pd.DataFrame, artifact: dict, assume_active: bool = Fals
     as if it were one of those two types. The model is scored on the feature
     list saved with it, not on whatever this module currently declares.
     """
-    model     = artifact["model"]
+    model = artifact["model"]
     threshold = artifact["operating_threshold"]
     feature_cols = list(artifact.get("feature_cols", FEATURE_COLS))
 
-    missing = [c for c in INPUT_COLS if c not in df.columns]
+    missing = []
+    for column in INPUT_COLS:
+        if column not in df.columns:
+            missing.append(column)
     if "type" not in df.columns and not assume_active:
         missing.append("type")
     if missing:
@@ -120,14 +123,19 @@ def score_dataframe(df: pd.DataFrame, artifact: dict, assume_active: bool = Fals
 
     df = df.copy()
     df["fraud_score"] = np.nan
-    df["fraud_flag"]  = 0
+    df["fraud_flag"] = 0
 
-    mask = df["type"].isin(ACTIVE_TYPES) if "type" in df.columns else pd.Series(True, index=df.index)
+    # mask is True for the rows that get scored.
+    if "type" in df.columns:
+        mask = df["type"].isin(ACTIVE_TYPES)
+    else:
+        mask = pd.Series(True, index=df.index)
+
     if mask.any():
         active = engineer_features(df[mask])
         probs = model.predict_proba(active[feature_cols])[:, 1]
         df.loc[mask, "fraud_score"] = probs
-        df.loc[mask, "fraud_flag"]  = (probs >= threshold).astype(int)
+        df.loc[mask, "fraud_flag"] = (probs >= threshold).astype(int)
 
     return df
 
@@ -161,11 +169,14 @@ def score_single(artifact: dict) -> None:
         "newbalanceDest": new_dest,
     }])
 
-    scored  = score_dataframe(row, artifact)
-    score   = scored["fraud_score"].iloc[0]
-    flag    = int(scored["fraud_flag"].iloc[0])
+    scored = score_dataframe(row, artifact)
+    score = scored["fraud_score"].iloc[0]
+    flag = int(scored["fraud_flag"].iloc[0])
 
-    verdict = "FRAUD FLAGGED" if flag else "LEGITIMATE"
+    if flag:
+        verdict = "FRAUD FLAGGED"
+    else:
+        verdict = "LEGITIMATE"
     print("\n-- Result --")
     print(f"  Fraud probability : {score:.6f}")
     print(f"  Operating threshold: {threshold}")
@@ -178,31 +189,31 @@ def score_single(artifact: dict) -> None:
 # ---------------------------------------------------------------------------
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(
+    parser = argparse.ArgumentParser(
         description="Score transactions with the trained XGBoost fraud classifier."
     )
-    p.add_argument(
+    parser.add_argument(
         "--model",
         default="model/xgb_fraud_model.pkl",
         metavar="PKL",
         help="Path to serialised model artifact (default: model/xgb_fraud_model.pkl).",
     )
-    p.add_argument(
+    parser.add_argument(
         "--input",
         metavar="CSV",
         help="CSV of transactions to score. If omitted, runs in interactive mode.",
     )
-    p.add_argument(
+    parser.add_argument(
         "--output",
         metavar="CSV",
         help="Output CSV with fraud_score and fraud_flag columns appended.",
     )
-    p.add_argument(
+    parser.add_argument(
         "--assume-active",
         action="store_true",
         help="Score every row when the CSV has no `type` column (treat all rows as TRANSFER/CASH_OUT).",
     )
-    return p.parse_args()
+    return parser.parse_args()
 
 
 def main() -> None:
@@ -228,7 +239,10 @@ def main() -> None:
             sys.exit(1)
 
         flagged = int(scored["fraud_flag"].sum())
-        share = 100 * flagged / len(scored) if len(scored) else 0.0
+        if len(scored):
+            share = 100 * flagged / len(scored)
+        else:
+            share = 0.0
         print(f"Scored {len(scored):,} transactions -> {flagged:,} flagged ({share:.2f}%)")
 
         if args.output:
@@ -238,7 +252,10 @@ def main() -> None:
             flagged_rows = scored[scored["fraud_flag"] == 1]
             if len(flagged_rows):
                 print("\nFlagged transactions:")
-                shown = [c for c in ("type", "amount", "fraud_score", "fraud_flag") if c in flagged_rows.columns]
+                shown = []
+                for column in ["type", "amount", "fraud_score", "fraud_flag"]:
+                    if column in flagged_rows.columns:
+                        shown.append(column)
                 print(flagged_rows[shown].to_string(index=False))
     else:
         score_single(artifact)

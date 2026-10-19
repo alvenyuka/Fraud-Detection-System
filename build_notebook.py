@@ -564,9 +564,15 @@ the score, so nothing downstream would flag it.
 
 code("""
 LEAKY_COLUMNS = ["isFraud", "isFlaggedFraud", "nameOrig", "nameDest", "step"]
-MODEL_COLS = [c for c in features.columns if c != "step"]
+MODEL_COLS = []
+for column in features.columns:
+    if column != "step":
+        MODEL_COLS.append(column)
 
-leaked = [c for c in MODEL_COLS if c in LEAKY_COLUMNS]
+leaked = []
+for column in MODEL_COLS:
+    if column in LEAKY_COLUMNS:
+        leaked.append(column)
 assert not leaked, f"leaked columns reached the model inputs: {leaked}"
 print("model inputs:", MODEL_COLS)
 print("leakage guard passed: none of", LEAKY_COLUMNS, "is a model input")
@@ -702,7 +708,12 @@ results = {}
 
 def score_model(name, scores):
     precision, recall, _ = precision_recall_curve(y_test, scores)
-    recall_at_99 = recall[:-1][precision[:-1] >= 0.99].max() if (precision[:-1] >= 0.99).any() else 0.0
+    # The last precision/recall pair has no cut-off, so leave it out.
+    meets_floor = precision[:-1] >= 0.99
+    if meets_floor.any():
+        recall_at_99 = recall[:-1][meets_floor].max()
+    else:
+        recall_at_99 = 0.0
     results[name] = {"PR-AUC": average_precision_score(y_test, scores),
                      "ROC-AUC": roc_auc_score(y_test, scores),
                      "Recall at 99% precision": recall_at_99}
@@ -831,8 +842,13 @@ a false alarm (`COST_RATIO`). Try every cut-off and keep the cheapest.
 
 code("""
 cutoffs = np.linspace(0.01, 0.99, 99)
-missed = np.array([int(((xgb_scores < c) & (y_test == 1)).sum()) for c in cutoffs])
-false_alarms = np.array([int(((xgb_scores >= c) & (y_test == 0)).sum()) for c in cutoffs])
+missed_list = []
+false_alarm_list = []
+for cutoff in cutoffs:
+    missed_list.append(int(((xgb_scores < cutoff) & (y_test == 1)).sum()))
+    false_alarm_list.append(int(((xgb_scores >= cutoff) & (y_test == 0)).sum()))
+missed = np.array(missed_list)
+false_alarms = np.array(false_alarm_list)
 cost = COST_RATIO * missed + false_alarms
 cheapest = int(cost.argmin())
 
@@ -950,18 +966,27 @@ md("""
 
 code("""
 scoreboard = pd.DataFrame(results).T.sort_values("PR-AUC", ascending=False)
+pr_auc_sorted = scoreboard["PR-AUC"].sort_values()
+
+# Red for models below 0.5 PR-AUC, blue for the rest
+bar_colours = []
+for value in pr_auc_sorted:
+    if value < 0.5:
+        bar_colours.append("#c0504d")
+    else:
+        bar_colours.append("#2e5c8a")
+
 fig, ax = plt.subplots(figsize=(9, 4.5))
-scoreboard["PR-AUC"].sort_values().plot(kind="barh", ax=ax,
-                                        color=["#c0504d" if v < 0.5 else "#2e5c8a" for v in scoreboard["PR-AUC"].sort_values()])
+pr_auc_sorted.plot(kind="barh", ax=ax, color=bar_colours)
 ax.set_xlabel("PR-AUC on the test window (random guessing scores about 0.02)")
 ax.set_title("Model comparison on the test window")
 ax.set_xlim(0, 1.05)
-for i, v in enumerate(scoreboard["PR-AUC"].sort_values()):
+for i, v in enumerate(pr_auc_sorted):
     ax.text(v + 0.01, i, f"{v:.4f}", va="center", fontsize=9)
 plt.tight_layout()
 plt.savefig("figs/model_comparison.png", dpi=150, bbox_inches="tight")
 plt.show()
-print(scoreboard.to_string(float_format=lambda v: f"{v:.4f}"))
+print(scoreboard.to_string(float_format="{:.4f}".format))
 """)
 
 md("""
@@ -998,14 +1023,18 @@ test_steps = features.loc[~train_mask, "step"].to_numpy()
 period_rows = []
 for start, end in [(491, 560), (561, 630), (631, 700), (701, 743)]:
     in_period = (test_steps >= start) & (test_steps <= end)
-    truth, scores = y_test.to_numpy()[in_period], xgb_scores[in_period]
+    truth = y_test.to_numpy()[in_period]
+    scores = xgb_scores[in_period]
     flagged_period = scores >= operating_threshold
-    period_rows.append({"hours": f"{start}-{end}", "transactions": int(in_period.sum()), "frauds": int(truth.sum()),
+    true_positives = (flagged_period & (truth == 1)).sum()
+    period_rows.append({"hours": f"{start}-{end}",
+                        "transactions": int(in_period.sum()),
+                        "frauds": int(truth.sum()),
                         "PR-AUC": average_precision_score(truth, scores),
-                        "precision": (flagged_period & (truth == 1)).sum() / max(flagged_period.sum(), 1),
-                        "recall": (flagged_period & (truth == 1)).sum() / truth.sum()})
+                        "precision": true_positives / max(flagged_period.sum(), 1),
+                        "recall": true_positives / truth.sum()})
 periods = pd.DataFrame(period_rows).set_index("hours")
-print(periods.to_string(float_format=lambda v: f"{v:.4f}"))
+print(periods.to_string(float_format="{:.4f}".format))
 """)
 
 md("""
@@ -1162,7 +1191,10 @@ screens = {
     f"XGBoost, 99%-precision cut-off ({operating_threshold:.2f})": xgb_scores >= operating_threshold,
     f"XGBoost, cheapest cut-off ({cutoffs[cheapest]:.2f})": xgb_scores >= cutoffs[cheapest],
 }
-impact = pd.DataFrame.from_dict({name: screen_outcome(flagged) for name, flagged in screens.items()}, orient="index")
+outcomes = {}
+for name, flagged in screens.items():
+    outcomes[name] = screen_outcome(flagged)
+impact = pd.DataFrame.from_dict(outcomes, orient="index")
 print(f"test window: {len(y_test):,} transactions, {int(truth.sum()):,} frauds worth {total_fraud_value / 1e9:.2f} billion")
 shown = impact.copy()
 shown["share of fraud value stopped"] = shown["share of fraud value stopped"].map("{:.2%}".format)
@@ -1259,11 +1291,12 @@ md("""
 ---
 ## 17. Results file
 
-Every headline number above is written to `outputs/notebook_results.json`, with the package versions, the git
-commit of the code and the run time, so the README and `docs/METHODOLOGY.md` can be checked against it.
+Every headline number above is written to `outputs/notebook_results.json`, with a short run record (the date,
+the run time, the git commit of the code, whether that code had uncommitted changes, and the Python and package
+versions), so the README and
+`docs/METHODOLOGY.md` can be checked against it.
 
-**Step 17.1:** Small helpers for the provenance record: a package's version, a git query, and the peak memory
-used by this run.
+**Step 17.1:** A small helper that asks git a question and returns nothing if git is not available.
 """)
 
 code("""
@@ -1274,30 +1307,12 @@ from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 
 
-def package_version(name):
-    try:
-        return version(name)
-    except PackageNotFoundError:
-        return None
-
-
 def git(*args):
     try:
-        return subprocess.run(["git", *args], capture_output=True, text=True, check=True).stdout.strip()
+        result = subprocess.run(["git", *args], capture_output=True, text=True, check=True)
+        return result.stdout.strip()
     except Exception:
-        return None
-
-
-def peak_memory_gb():
-    try:
-        import psutil
-        info = psutil.Process().memory_info()
-        peak = getattr(info, "peak_wset", None)  # Windows
-        if peak is None:
-            import resource  # Linux and macOS
-            peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
-        return round(peak / 1e9, 1)
-    except Exception:
+        # git is not installed, or this folder is not a git repository
         return None
 """)
 
@@ -1307,19 +1322,52 @@ SHAP figures, and write the file.
 """)
 
 code("""
-uncommitted = git("status", "--porcelain", "--", ".", ":(exclude)*.ipynb", ":(exclude)figs", ":(exclude)outputs")
+# "git status --porcelain" prints one line per changed file and nothing if the code is clean. The notebook,
+# figures and outputs are left out because running this notebook rewrites them.
+changed_files = git("status", "--porcelain", "--", ".", ":(exclude)*.ipynb", ":(exclude)figs", ":(exclude)outputs")
+if changed_files is None:
+    uncommitted_code_changes = None
+else:
+    uncommitted_code_changes = len(changed_files) > 0
+
+package_names = ["numpy", "pandas", "scikit-learn", "xgboost", "lightgbm", "imbalanced-learn", "shap", "matplotlib", "seaborn"]
+package_versions = {}
+for package_name in package_names:
+    try:
+        package_versions[package_name] = version(package_name)
+    except PackageNotFoundError:
+        package_versions[package_name] = None
+
+run_record = {
+    "run_date_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+    "runtime_minutes": round((time.time() - RUN_STARTED) / 60),
+    "git_commit": git("rev-parse", "HEAD"),
+    "uncommitted_code_changes": uncommitted_code_changes,
+    "python": platform.python_version(),
+    "packages": package_versions,
+}
+
+# One entry per model: every metric turned into a plain float so it can be written as JSON.
+model_metrics = {}
+for model_name in results:
+    model_metrics[model_name] = {}
+    for metric_name, value in results[model_name].items():
+        model_metrics[model_name][metric_name] = float(value)
+
+shap_mean_abs = {}
+for feature_name, value in importance.items():
+    shap_mean_abs[feature_name] = float(value)
+
+
+def to_json_value(value):
+    # numpy numbers have .item() to turn them into plain Python numbers; anything else is written as text
+    if hasattr(value, "item"):
+        return value.item()
+    return str(value)
+
 
 notebook_results = {
-    "provenance": {
-        "run_date_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-        "runtime_minutes": round((time.time() - RUN_STARTED) / 60),
-        "peak_memory_gb": peak_memory_gb(),
-        "git_commit": git("rev-parse", "HEAD"),
-        "uncommitted_code_changes": None if uncommitted is None else bool(uncommitted),
-        "python": platform.python_version(),
-        "packages": {p: package_version(p) for p in (
-            "numpy", "pandas", "scikit-learn", "xgboost", "lightgbm", "imbalanced-learn", "shap", "matplotlib", "seaborn")},
-    },
+    "provenance": run_record,
     "data": {
         "transactions": 6_362_620,
         "frauds": n_fraud,
@@ -1337,7 +1385,7 @@ notebook_results = {
         "class_weight": float(class_weight),
         "model_inputs": MODEL_COLS,
     },
-    "models": {name: {k: float(v) for k, v in row.items()} for name, row in results.items()},
+    "models": model_metrics,
     "cut_off": {
         "precision_floor": 0.99,
         "operating_threshold": operating_threshold,
@@ -1351,11 +1399,11 @@ notebook_results = {
     },
     "periods": periods.reset_index().to_dict(orient="records"),
     "impact": {"test_fraud_value": float(total_fraud_value), "screens": impact.to_dict(orient="index")},
-    "shap_mean_abs": {k: float(v) for k, v in importance.items()},
+    "shap_mean_abs": shap_mean_abs,
 }
 
 with open("outputs/notebook_results.json", "w", encoding="utf-8") as f:
-    json.dump(notebook_results, f, indent=2, default=lambda o: o.item() if hasattr(o, "item") else str(o))
+    json.dump(notebook_results, f, indent=2, default=to_json_value)
 print("Wrote outputs/notebook_results.json")
 print(json.dumps(notebook_results["provenance"], indent=2))
 """)

@@ -110,47 +110,68 @@ def engineer_features(txn: dict) -> dict:
 
 
 def _f32(x: float) -> float:
-    """Round-trip through 32-bit precision, matching XGBoost's internal float32 comparisons."""
-    return struct.unpack("f", struct.pack("f", x))[0]
+    """Round a Python float (64-bit) to the nearest 32-bit float.
+
+    XGBoost stores feature values and split points as 32-bit floats and compares them
+    at that precision. A value just below a split point in 64-bit can be equal to it
+    in 32-bit, and it would then go down the other branch. Rounding both sides here
+    makes this file choose the same branch as XGBoost.
+    """
+    packed = struct.pack("f", x)  # "f" is a C float, 4 bytes
+    return struct.unpack("f", packed)[0]
 
 
 def eval_tree(tree: dict, values: list) -> float:
     """Walk one exported XGBoost tree for one transaction and return the leaf value.
 
-    Comparisons use 32-bit floats, as XGBoost does, and a missing value follows the
-    tree's default branch.
+    The tree is stored as parallel lists: entry i of each list describes node i,
+    and node 0 is the root. A left child of -1 marks a leaf. A leaf keeps its
+    output in the same list that holds split points for other nodes ("cond").
     """
+    left_child = tree["left"]
+    right_child = tree["right"]
+    feature_index = tree["feat"]
+    split_value = tree["cond"]
+    default_left = tree["default_left"]
+
     node = 0
-    left, right = tree["left"], tree["right"]
-    feat, cond, default_left = tree["feat"], tree["cond"], tree["default_left"]
-    while left[node] != -1:
-        val = values[feat[node]]
-        if val is None:
-            node = left[node] if default_left[node] else right[node]
-        elif _f32(val) < _f32(cond[node]):
-            node = left[node]
+    while left_child[node] != -1:
+        value = values[feature_index[node]]
+
+        if value is None:
+            # A missing value follows the branch XGBoost chose during training.
+            if default_left[node]:
+                node = left_child[node]
+            else:
+                node = right_child[node]
+        elif _f32(value) < _f32(split_value[node]):
+            node = left_child[node]
         else:
-            node = right[node]
-    return cond[node]
+            node = right_child[node]
+
+    return split_value[node]
 
 
 def isotonic_predict(raw_prob: float) -> float:
     """Map a raw probability through the exported isotonic calibration (linear between breakpoints)."""
-    m = load_model()
-    ISO_X, ISO_Y = m["iso_x"], m["iso_y"]
-    x_min, x_max = ISO_X[0], ISO_X[-1]
-    x = min(max(raw_prob, x_min), x_max)
-    # a linear scan is fine: the export holds a few dozen breakpoints
-    if x <= ISO_X[0]:
-        return ISO_Y[0]
-    for i in range(1, len(ISO_X)):
-        if x <= ISO_X[i]:
-            x0, x1 = ISO_X[i - 1], ISO_X[i]
-            y0, y1 = ISO_Y[i - 1], ISO_Y[i]
+    model = load_model()
+    iso_x = model["iso_x"]
+    iso_y = model["iso_y"]
+
+    # Probabilities outside the fitted range take the end values.
+    x = min(max(raw_prob, iso_x[0]), iso_x[-1])
+    if x <= iso_x[0]:
+        return iso_y[0]
+
+    # A linear scan is fine: the export holds a few dozen breakpoints.
+    for i in range(1, len(iso_x)):
+        if x <= iso_x[i]:
+            x0, x1 = iso_x[i - 1], iso_x[i]
+            y0, y1 = iso_y[i - 1], iso_y[i]
             if x1 == x0:
                 return y0
             return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
-    return ISO_Y[-1]
+    return iso_y[-1]
 
 
 def score_transaction(txn: dict) -> dict:
@@ -162,8 +183,15 @@ def score_transaction(txn: dict) -> dict:
     m = load_model()
     features = engineer_features(txn)
     try:
-        values = [features[name] for name in m["feature_names"]]
-        margin = m["base_margin"] + sum(eval_tree(t, values) for t in m["trees"])
+        values = []
+        for name in m["feature_names"]:
+            values.append(features[name])
+
+        # Each tree returns one leaf value; the margin is the base margin plus their sum.
+        leaf_values = []
+        for tree in m["trees"]:
+            leaf_values.append(eval_tree(tree, values))
+        margin = m["base_margin"] + sum(leaf_values)
     except (KeyError, IndexError, TypeError) as exc:
         # A malformed export (missing node key, bad child index) is a server fault, not bad input.
         raise ModelUnavailable(UNAVAILABLE_MESSAGE) from exc
@@ -193,7 +221,10 @@ def parse_transaction(body: dict) -> dict:
     """
     if not isinstance(body, dict):
         raise ValueError("request body must be a JSON object")
-    missing = [f for f in REQUIRED_FIELDS if f not in body]
+    missing = []
+    for field in REQUIRED_FIELDS:
+        if field not in body:
+            missing.append(field)
     if missing:
         raise ValueError(f"Missing fields: {', '.join(missing)}")
     txn = {}
@@ -229,7 +260,9 @@ class handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self._cors_headers()
         self.send_header("Content-Type", "application/json")
-        for key, value in (extra_headers or {}).items():
+        if extra_headers is None:
+            extra_headers = {}
+        for key, value in extra_headers.items():
             self.send_header(key, value)
         self.end_headers()
         self.wfile.write(json.dumps(payload).encode())

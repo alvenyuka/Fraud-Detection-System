@@ -41,8 +41,8 @@ def export() -> None:
     """
     artifact = joblib.load(MODEL_PATH)
     calibrated = artifact["model"]
-    cc = calibrated.calibrated_classifiers_[0]
-    raw_xgb = cc.estimator.estimator  # unwrap FrozenEstimator
+    first_fold = calibrated.calibrated_classifiers_[0]
+    raw_xgb = first_fold.estimator.estimator  # unwrap FrozenEstimator
     booster = raw_xgb.get_booster()
 
     # Native format keeps full float32 precision (unlike get_dump's text format).
@@ -55,18 +55,17 @@ def export() -> None:
     trees = learner["gradient_booster"]["model"]["trees"]
 
     # Keep only the fields the pure-Python traversal actually needs.
-    compact_trees = [
-        {
-            "left": t["left_children"],
-            "right": t["right_children"],
-            "feat": t["split_indices"],
-            "cond": t["split_conditions"],
-            "default_left": t["default_left"],
-        }
-        for t in trees
-    ]
+    compact_trees = []
+    for tree in trees:
+        compact_trees.append({
+            "left": tree["left_children"],
+            "right": tree["right_children"],
+            "feat": tree["split_indices"],
+            "cond": tree["split_conditions"],
+            "default_left": tree["default_left"],
+        })
 
-    iso = cc.calibrators[0]
+    iso = first_fold.calibrators[0]
 
     export_data = {
         "feature_names": feature_names,

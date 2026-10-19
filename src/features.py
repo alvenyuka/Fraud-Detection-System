@@ -69,7 +69,8 @@ def split_off_latest_steps(train_df: pd.DataFrame, share: float = HOLDOUT_STEP_S
     Returns (fit_df, calibration_df). Raises ValueError if the calibration part
     holds no fraud, because a threshold cannot be chosen from it.
     """
-    first, last = int(train_df["step"].min()), int(train_df["step"].max())
+    first = int(train_df["step"].min())
+    last = int(train_df["step"].max())
     cut = last - int((last - first + 1) * share)
     fit_df = train_df[train_df["step"] <= cut]
     calibration_df = train_df[train_df["step"] > cut]
@@ -130,7 +131,8 @@ def pick_best_threshold(y_true: np.ndarray, predicted_probs: np.ndarray) -> floa
     operational choice, since it raises fewer alerts for the same money.
     """
     candidate_thresholds = np.unique(np.concatenate([predicted_probs, [0.0, 1.0]]))
-    best_threshold, lowest_cost = 0.5, np.inf
+    best_threshold = 0.5
+    lowest_cost = np.inf
 
     for threshold in candidate_thresholds:
         predicted_fraud = (predicted_probs >= threshold).astype(int)
@@ -138,6 +140,7 @@ def pick_best_threshold(y_true: np.ndarray, predicted_probs: np.ndarray) -> floa
         false_alarm_count = int(((predicted_fraud == 1) & (y_true == 0)).sum())
         total_cost = COST_PER_MISSED_FRAUD * missed_fraud_count + COST_PER_FALSE_ALARM * false_alarm_count
         if total_cost <= lowest_cost:
-            lowest_cost, best_threshold = total_cost, threshold
+            lowest_cost = total_cost
+            best_threshold = threshold
 
     return float(best_threshold)

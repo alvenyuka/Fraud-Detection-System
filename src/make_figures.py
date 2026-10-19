@@ -37,7 +37,9 @@ def main() -> None:
     curve = curve[curve["threshold"] > 0]  # at 0 every transaction is flagged
     # Holdout size, counted from explain.py's histogram of the same rows.
     distribution = pd.read_csv(DATA / "probability_distribution.csv")
-    n_holdout = int(distribution["count_legitimate"].sum() + distribution["count_fraud"].sum())
+    n_legitimate = int(distribution["count_legitimate"].sum())
+    n_fraud = int(distribution["count_fraud"].sum())
+    n_holdout = n_legitimate + n_fraud
 
     fig, (left, right) = plt.subplots(1, 2, figsize=(12, 4.6), gridspec_kw={"width_ratios": [1.35, 1]})
 
@@ -55,24 +57,36 @@ def main() -> None:
 
     # Points, not bars: the axis does not start at zero, and a truncated bar
     # would exaggerate the gaps between folds.
-    labels = [f"{a + 1}-{b}" for a, b in zip(folds["train_end_step"], folds["test_end_step"])]
+    labels = []
+    for train_end, test_end in zip(folds["train_end_step"], folds["test_end_step"]):
+        labels.append(f"{train_end + 1}-{test_end}")
     x = list(range(len(folds)))
-    for offset, col, colour, marker in ((-0.12, "PR-AUC", GREY, "s"), (0, "Precision", BLUE, "o"),
-                                        (0.12, "Recall", RED, "^")):
-        right.plot([i + offset for i in x], folds[col] * 100, ls="none", marker=marker, ms=8,
-                   color=colour, label=col)
+
+    # Each metric is nudged left or right of the fold's tick so the three points do not overlap.
+    metric_styles = [
+        {"column": "PR-AUC", "offset": -0.12, "colour": GREY, "marker": "s"},
+        {"column": "Precision", "offset": 0, "colour": BLUE, "marker": "o"},
+        {"column": "Recall", "offset": 0.12, "colour": RED, "marker": "^"},
+    ]
+    for style in metric_styles:
+        shifted_x = []
+        for i in x:
+            shifted_x.append(i + style["offset"])
+        right.plot(shifted_x, folds[style["column"]] * 100, ls="none", marker=style["marker"], ms=8,
+                   color=style["colour"], label=style["column"])
     right.set_xticks(x)
     right.set_xticklabels(labels)
     right.set_xlim(-0.5, len(folds) - 0.5)
     right.set_xlabel("Walk-forward folds: test window (steps)")
     right.set_ylabel("% (axis does not start at 0)")
-    low = min(folds[c].min() for c in ("PR-AUC", "Precision", "Recall")) * 100
+    low = min(folds["PR-AUC"].min(), folds["Precision"].min(), folds["Recall"].min()) * 100
     right.set_ylim(max(0.0, low - 1.0), 100.3)
     right.grid(axis="y", color="#e2e8f0", lw=0.8)
     right.legend(frameon=False, loc="lower right", bbox_to_anchor=(1.0, 1.0), ncol=3, fontsize=9)
 
     for ax in (left, right):
-        ax.spines[["top", "right"]].set_visible(False)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
 
     fig.tight_layout()
     OUT.mkdir(exist_ok=True)

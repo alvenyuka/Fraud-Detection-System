@@ -74,6 +74,19 @@ log = logging.getLogger(__name__)
 DASHBOARD_DATA_DIR = Path(__file__).parent.parent / "dashboard" / "data"
 
 
+def drop_chart_only_keys(fold_result: dict) -> dict:
+    """Copy a fold's result without the keys that start with "_".
+
+    Those keys hold the raw test labels and predictions. They are only needed to
+    draw the charts, so they stay out of the saved table and summary.
+    """
+    table_row = {}
+    for key in fold_result:
+        if not key.startswith("_"):
+            table_row[key] = fold_result[key]
+    return table_row
+
+
 def run_one_fold(df: pd.DataFrame, train_end_step: int, test_end_step: int, xgb_params: dict) -> dict:
     """Train on everything up to train_end_step, test on the steps right after it."""
     train_period = df[df["step"] <= train_end_step]
@@ -84,13 +97,19 @@ def run_one_fold(df: pd.DataFrame, train_end_step: int, test_end_step: int, xgb_
     # already memorised and sits next in time to the test window.
     fit_rows, calibration_rows = split_off_latest_steps(train_period)
 
-    X_fit, y_fit = fit_rows[FEATURE_COLS], fit_rows["isFraud"]
-    X_calibration, y_calibration = calibration_rows[FEATURE_COLS], calibration_rows["isFraud"]
-    X_test, y_test = test_period[FEATURE_COLS], test_period["isFraud"]
+    X_fit = fit_rows[FEATURE_COLS]
+    y_fit = fit_rows["isFraud"]
+    X_calibration = calibration_rows[FEATURE_COLS]
+    y_calibration = calibration_rows["isFraud"]
+    X_test = test_period[FEATURE_COLS]
+    y_test = test_period["isFraud"]
 
     # early_stopping_rounds only makes sense during tuning (it needs a
     # validation set); drop it here so a plain .fit() call works.
-    clean_params = {k: v for k, v in xgb_params.items() if k != "early_stopping_rounds"}
+    clean_params = {}
+    for name in xgb_params:
+        if name != "early_stopping_rounds":
+            clean_params[name] = xgb_params[name]
     base_model = XGBClassifier(**clean_params)
     base_model.fit(X_fit, y_fit)
 
@@ -154,27 +173,47 @@ def validate(data_path: str) -> None:
     # Average each metric across all 4 folds, plus how much it varies (std):
     # a small std means the model behaves consistently across time.
     metric_names = ["PR-AUC", "ROC-AUC", "Precision", "Recall", "F1", "Brier"]
+
+    fold_rows = []
+    for result in fold_results:
+        fold_rows.append(drop_chart_only_keys(result))
+
     summary = {
         "n_folds": len(fold_results),
-        "folds": [{k: v for k, v in r.items() if not k.startswith("_")} for r in fold_results],
+        "folds": fold_rows,
     }
     for metric in metric_names:
-        values = [r[metric] for r in fold_results]
-        digits = 6 if metric == "Brier" else 4  # Brier is around 1e-4, so 4 dp would round it away
+        values = []
+        for result in fold_results:
+            values.append(result[metric])
+
+        # Brier is around 1e-4, so 4 decimals would round it away
+        if metric == "Brier":
+            digits = 6
+        else:
+            digits = 4
         summary[metric] = {
             "mean": round(float(np.mean(values)), digits),
             "std": round(float(np.std(values)), digits),
         }
 
     # How far the cost-optimal cut-off moves from one fold to the next.
-    thresholds = np.array([r["threshold"] for r in fold_results], dtype=float)
+    threshold_list = []
+    for result in fold_results:
+        threshold_list.append(result["threshold"])
+    thresholds = np.array(threshold_list, dtype=float)
+
+    if thresholds.mean() > 0:
+        threshold_cv = round(float(thresholds.std() / thresholds.mean()), 4)
+    else:
+        threshold_cv = None
+
     summary["threshold"] = {
         "min": round(float(thresholds.min()), 4),
         "max": round(float(thresholds.max()), 4),
         "mean": round(float(thresholds.mean()), 4),
         "std": round(float(thresholds.std()), 4),
-        "coefficient_of_variation": round(float(thresholds.std() / thresholds.mean()), 4)
-        if thresholds.mean() > 0 else None,
+        "coefficient_of_variation": threshold_cv,
     }
 
     log.info("Walk-forward summary (mean +/- std across %d folds):", len(fold_results))
@@ -190,7 +229,10 @@ def save_dashboard_artifacts(fold_results: list, summary: dict) -> None:
     """Write the small files dashboard/app.py's Model Performance tab reads."""
     DASHBOARD_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-    fold_table = pd.DataFrame([{k: v for k, v in r.items() if not k.startswith("_")} for r in fold_results])
+    fold_rows = []
+    for result in fold_results:
+        fold_rows.append(drop_chart_only_keys(result))
+    fold_table = pd.DataFrame(fold_rows)
     fold_table.to_csv(DASHBOARD_DATA_DIR / "walk_forward_results.csv", index=False)
 
     # Charts (PR curve, calibration curve, confusion matrix) come from the
@@ -222,9 +264,9 @@ def save_dashboard_artifacts(fold_results: list, summary: dict) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Walk-forward validation for the fraud classifier.")
-    p.add_argument("--data", required=True, metavar="CSV", help="Path to PaySim CSV.")
-    return p.parse_args()
+    parser = argparse.ArgumentParser(description="Walk-forward validation for the fraud classifier.")
+    parser.add_argument("--data", required=True, metavar="CSV", help="Path to PaySim CSV.")
+    return parser.parse_args()
 
 
 if __name__ == "__main__":
