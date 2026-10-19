@@ -1,192 +1,196 @@
 # Mobile-Money Fraud Detection
 
-Stops 99.98% of fraud value on unseen transactions and freezes 3 honest customers.
-
-| At a glance | |
-|---|---|
-| **Who decides** | A mobile-money fraud team deciding which transfers to freeze. |
-| **Result** | On 132,136 later transactions it never saw: 2,742 of 2,754 frauds caught, 99.98% of the fraud value stopped, 3 honest customers frozen. |
-| **Proof** | Calibrated XGBoost on 6.36M PaySim transactions, walk-forward validation over four later windows, a live scoring API and 63 tests in CI. |
+A model that flags fraudulent mobile-money transfers so a fraud team can freeze them, built and tested on 6.36 million simulated transactions.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
 [![tests](https://github.com/alvenyuka/Fraud-Detection-System/actions/workflows/ci.yml/badge.svg)](https://github.com/alvenyuka/Fraud-Detection-System/actions/workflows/ci.yml)
 
-**Try it:** [live scoring page](https://fraud-detection-alven.vercel.app), which scores with the shipped model.
-The Streamlit dashboard runs locally (`make dashboard`); its public host was retired.
+![Bar chart of the share of fraud value stopped on the holdout by each screening method: the simulator's built-in flag stops 1.1%, the model 99.98%](figures/fraud_value_stopped.png)
 
-![Fraud value on the holdout by screening method: the built-in flag stops 1.1%, the model 99.98%](figures/fraud_value_stopped.png)
+## What this project does
 
-## The problem
+In mobile money, a fraud flag usually freezes the customer's funds. A false alarm locks a legitimate person out of
+their own money. A missed fraud is a direct loss. So the question is: how much fraud can a model stop, how many
+legitimate customers does it freeze to do that, and does it keep working as time passes?
 
-In mobile money a fraud flag usually freezes the customer's funds. Every false alarm locks an honest customer
-out of their own money; every missed fraud is a direct loss. Fraud is about 0.13% of transactions, so a model
-that never flags anything is 99.87% accurate and useless. A fraud-operations team needs three answers: **how
-much fraud value the model stops, how many honest customers it freezes to do so, and whether that holds as
-time passes.**
-
-## How it works
-
-```mermaid
-flowchart LR
-    A[6.36M PaySim transactions] --> B[TRANSFER and CASH_OUT: 2.77M]
-    B --> C[Balance-discrepancy features]
-    C --> D[Time split at hour 490]
-    D --> E[XGBoost tuned on hours up to 350]
-    E --> F[Isotonic calibration, cost-based threshold]
-    F --> G[Holdout, 4 walk-forward folds, PSI drift]
-```
-
-1. **Filter.** Only TRANSFER and CASH_OUT carry fraud in PaySim, leaving 2,770,409 transactions.
-2. **Features.** Five numbers per transaction: the amount, whether the sender's and the recipient's balances
-   moved by exactly the amount sent, how much of the sender's balance the transfer drains, and the amount
-   relative to the recipient's balance. Fraud breaks the accounting identity.
-3. **No look-ahead.** Training data precedes test data. Hyperparameters are tuned with Optuna (40 trials) only
-   on windows ending by hour 350, before every reporting window, and the model ships with the tree count early
-   stopping chose in tuning (35 trees).
-4. **Calibration and a cost-based cut-off.** Isotonic calibration on the latest fifth of the training hours
-   (393 to 490), then the threshold that minimises cost with a missed fraud priced at 100 times a false alarm.
-5. **Validation over time.** The holdout, plus four expanding-window folds testing hours 351 to 743, each
-   choosing its threshold on calibration data, never on test rows.
-6. **Serve and monitor.** A pure-Python port of the model behind the live API, parity-tested against the
-   original; Population Stability Index for each balance feature across 15 time windows.
-
-## Stack
-
-| Layer | Tool | Version |
-|---|---|---|
-| Language | Python | 3.13; CI on 3.12 and 3.13 |
-| Data | pandas, NumPy, SciPy | 3.0.3, 2.4.6, 1.17.1 |
-| Model | XGBoost, scikit-learn (isotonic calibration) | 3.3.0, 1.8.0 |
-| Tuning | Optuna | 4.9.0 |
-| Explainability | SHAP | 0.51.0 |
-| Comparisons (notebook only) | LightGBM, imbalanced-learn | 4.6.0, 0.14.2 |
-| Charts | matplotlib, seaborn, Plotly | 3.9.2, 0.13.2, 6.9.0 |
-| Serving | serverless Python API on Vercel (`api/score.py`), Streamlit dashboard | |
-| Tests and CI | pytest, GitHub Actions | 8.3.3 |
-
-`requirements-lock.txt` pins every transitive dependency; `src/predict.py` warns when the installed
-scikit-learn or XGBoost differ from the versions the model was trained with.
+The data is PaySim, a public simulator built from the logs of a mobile-money service in Africa: 6,362,620
+transactions over 743 simulated hours (about 31 days). It is simulated data, not customer transactions.
 
 ## Results
 
-A calibrated XGBoost model that flags fraudulent mobile-money transfers so they can be stopped before the money leaves. Trained on 6.36 million simulated PaySim transactions and tested on 132,136 later ones it had never seen, it stopped 99.98% of the fraud value (the simulator's built-in flag stopped 1.1%), catching 2,742 of 2,754 frauds while wrongly freezing 3 honest customers. Walk-forward validation over four later windows, a live scoring API and 63 tests in CI.
+I trained on the first 490 hours and scored the 132,136 TRANSFER and CASH_OUT transactions after that, which the model never saw during training.
 
-- 6,362,620 transactions in the simulation; 2,638,273 in the training period (steps 1 to 490).
-- 132,136 held-out transactions (steps 491 to 743) with 2,754 frauds, scored once.
-- 4 walk-forward folds and 15 drift windows.
-- 63 tests pass, with no dataset needed.
+- **Ranking quality held up over time: walk-forward PR-AUC 0.9971.** PR-AUC is the area under the precision-recall
+  curve, the average precision across recall levels; a random model scores about the fraud rate, and 1.0 is perfect.
+  Walk-forward means the model was re-tested over four later time windows (step 9).
+- **It caught 2,742 of the 2,754 frauds (recall 99.6%).** Recall is the share of frauds the model flags.
+- **It froze 3 legitimate customers (precision 99.9%).** Precision is the share of flags that were real fraud.
+- **It stopped 99.98% of the fraud value**, against 1.1% for the simulator's own built-in flag.
+- **Over four later time windows, precision averaged 96.9% and fell to 88.1% in the last one.** The ranking of
+  transactions stayed good; the cut-off score that decides "flag or not" did not hold steady (see step 9).
+- **Live demo:** [fraud-detection-alven.vercel.app](https://fraud-detection-alven.vercel.app). You type in the
+  five numbers of a transfer (amount, sender balance before and after, recipient balance before and after) and
+  `api/score.py` returns the model's fraud probability and whether it is above the flag line. It runs the same
+  model as the tests below, ported to plain Python. Treat it as a way to poke at the model, not as fraud
+  detection: the model leans on two sender-side signals, `orig_balance_discrepancy` (how far the sender's balance change
+  misses the amount sent) and `orig_drain_ratio` (the share of the sender's balance the transfer moves),
+  which together carry 77% of its SHAP attribution (51.78% and 25.08%; SHAP is explained in step 10). So small
+  changes to the sender's balances can swing the score a lot. In step 8's scenario test, a transfer that moves
+  99% of an account scores 0%, and one that moves 100% scores 90.2%.
 
-| Measure | Result |
-|---|---:|
-| Frauds caught on the holdout (recall) | **2,742 of 2,754, 99.6%** |
-| Flags that were fraud (precision) | **99.9%**, 3 false alarms |
-| PR-AUC on the holdout | 0.9984 |
-| Brier score (calibration) | 0.000131 |
-| Operating threshold (cost-optimal on calibration data) | 0.8852 |
-| Walk-forward PR-AUC, 4 later windows | 0.9971 ± 0.0020 |
-| Walk-forward precision / recall | 96.9% / 99.7% |
+| Measure on the holdout | Value | What it means |
+|---|---:|---|
+| Recall | 99.6% (2,742 of 2,754) | Frauds caught |
+| Precision | 99.9% (3 false alarms) | Flags that were fraud |
+| PR-AUC | 0.9984 | Area under the precision-recall curve; 1.0 is perfect. Logged by `make train`, recorded in `MODEL_CARD.md` |
+| Brier score | 0.000131 | Average squared error of the predicted probabilities; 0 is perfect. Logged by `make train`, recorded in `MODEL_CARD.md` |
+| Flag threshold | 0.8852 | Scores at or above this are flagged |
+| Walk-forward PR-AUC (4 windows) | 0.9971 ± 0.0020 | Ranking holds in later windows |
+| Walk-forward precision / recall | 96.9% / 99.7% | Averages over the 4 windows |
 
-Ranking holds steady; the cut-off does not. Walk-forward precision is lower and less stable than the holdout
-figure: the last fold chose a threshold of 0.021 on its calibration data and reached 88.1% precision. Across
-the folds the cost-optimal threshold ranged from 0.021 to 1.00 (coefficient of variation 0.57), and
-`orig_drain_ratio` reached a PSI of 0.76 against the training window in the final hours. A deployment would
-review the threshold on a schedule, and the dashboard's monitoring tab tracks the drift.
+Money on the same holdout, from `src/business_impact.py` (amounts are PaySim's simulated currency units, and a
+fraud's value is its transaction amount):
 
-## Business impact
-
-Value of fraud on the holdout, in PaySim's simulated currency units, where a fraud's value is its transaction
-amount. Produced by `src/business_impact.py`.
-
-| Screening | Fraud value stopped | Fraud value let through | Honest customers frozen |
+| Screening | Fraud value stopped | Fraud value let through | Legitimate customers frozen |
 |---|---:|---:|---:|
 | None | 0 | 4.19 bn | 0 |
-| PaySim's `isFlaggedFraud` flag | 46.5 M (1.1%) | 4.14 bn | 0 |
-| **Model, threshold 0.8852 (cost-optimal)** | **4.190 bn (99.98%)** | 0.75 M | 3 |
+| PaySim's built-in `isFlaggedFraud` flag | 46.5 M (1.1%) | 4.14 bn | 0 |
+| **Model, threshold 0.8852** | **4.190 bn (99.98%)** | 0.75 M | 3 |
 | Model, threshold 0.5 | 4.190 bn (99.98%) | 0.75 M | 3 |
 
-The model stops 90 times as much fraud value as the built-in flag. On this holdout any cut-off from 0.5 up to
-the cost-optimal 0.8852 gives the same result: 2,742 frauds caught and 3 honest customers frozen, so there is no
-trade-off to price and `src/business_impact.py` reports the break-even cost per freeze as undefined. The
-calibrated model gives only a handful of distinct scores, so the cut-off matters only where it crosses one of
-them: above 0.88, recall drops to 95.0% (`dashboard/data/threshold_cost_curve.csv`). Assumption: a missed fraud
-costs 100 times a false alarm.
+The 3 legitimate customers held 0.31 M of value between them. The built-in flag caught 10 of the 2,754 frauds.
 
-## Charts
+## How I built it
 
-![Precision and recall on the holdout as the threshold moves, and PR-AUC, precision and recall on the four walk-forward folds](figures/threshold_tradeoff.png)
+Each step adds one idea. Terms are explained where they first appear.
 
-*Left: the holdout is flat across a wide band of thresholds. Right: across later windows ranking stays near
-0.997 PR-AUC while precision moves, which is why the threshold needs a review schedule.*
+1. **Look at the data** (`Fraud_Detection_System.ipynb`, Part 1). PaySim has 6,362,620 transactions and 8,213
+   are fraud, which is 0.13%. Fraud only happens in two transaction types, TRANSFER and CASH_OUT, which leaves
+   2,770,409 rows to model. One pattern stands out: in 97.82% of frauds the amount equals the sender's whole
+   balance, against 0.0% of legitimate transactions. The notebook's figures are in `figs/`, results in
+   `outputs/notebook_results.json`.
 
-![Correlation of balance fields for genuine and fraudulent transactions: fraud breaks the balance identity](figures/balance_discrepancy_fingerprint.png)
+   ![Bar charts of transaction count and value by type: CASH_OUT, PAYMENT and CASH_IN are the most frequent, TRANSFER moves the most value](figs/transactions_by_type.png)
 
-*In genuine transactions the balances move together; in fraud they do not. That broken identity is the
-signal the features are built on.*
+   *Fraud appears only in TRANSFER and CASH_OUT, so the other three types are dropped.*
+
+2. **Why accuracy is useless here.** A model that flags nothing is right 99.87% of the time, because 99.87% of
+   transactions are legitimate, and it stops no fraud. So I count frauds caught and legitimate customers frozen instead
+   of accuracy.
+
+3. **A baseline: the simulator's own flag.** PaySim ships a rule-based flag, `isFlaggedFraud`. On the holdout it
+   caught 10 of 2,754 frauds and stopped 1.1% of the fraud value (`src/business_impact.py`). Any model has to
+   beat this.
+
+4. **Features from bookkeeping.** A feature is a number the model gets to look at. A clean transfer obeys an
+   accounting rule: the sender's balance falls by exactly the amount, and the recipient's rises by exactly the
+   amount. Fraud often breaks it. `src/features.py` builds five numbers: the amount, how far the sender's
+   balances miss the rule (`orig_balance_discrepancy`), how far the recipient's miss it
+   (`dest_balance_discrepancy`), the share of the sender's balance the transfer moves (`orig_drain_ratio`),
+   and the amount relative to the recipient's balance (`dest_amount_ratio`). The raw balance columns are left
+   out on purpose, see "Problems I hit".
+
+   ![Correlation of the balance fields for genuine and fraudulent transactions: in genuine transactions the balances move together, in fraud they do not](figures/balance_discrepancy_fingerprint.png)
+
+   *In genuine transactions the balances move together. In fraud they do not, and the features measure that.*
+
+5. **Split by time, not at random.** I train on hours 1 to 490 and test on 491 to 743 (`src/config.py`,
+   `time_based_split` in `src/train.py`). Fraud patterns change over time, and a random split would let the
+   model learn from the future. Among TRANSFER and CASH_OUT, the holdout fraud rate is 2.08% against 0.21% in training, so the test period has far more fraud.
+
+6. **XGBoost, tuned.** XGBoost builds many small decision trees, each correcting the last one's mistakes.
+   `src/tune.py` ran 40 trials with Optuna, a tool that searches settings automatically. I scored the trials only
+   on windows ending by hour 350, so none of the hours I report on were used to pick the settings. Early
+   stopping (stop adding trees once a held-back slice stops improving) kept 35 trees (`model/best_params.json`).
+
+7. **Calibration.** A raw model score is a ranking, not a probability. Isotonic calibration fits a step-shaped
+   curve that maps scores to the fraud frequency seen. I fit it on the latest fifth of the training
+   hours (393 to 490), rows the model had not trained on, in `src/train.py`.
+
+8. **Pick the threshold from money.** The threshold is the score above which a transaction is flagged. A missed
+   fraud costs far more than a false alarm, so `pick_best_threshold` in `src/features.py` tries every cut-off
+   and keeps the cheapest, pricing a missed fraud at 100 times a false alarm. That 100 is my assumption, not a
+   measured cost. It uses the calibration hours, never the test rows, and gave 0.8852. Any cut-off from 0.5 up
+   to 0.8852 gives the same result on the holdout (2,742 caught, 3 frozen), because the calibrated model gives only a few
+   distinct scores. `src/scenarios.py` also probes the model with made-up transfers
+   (`dashboard/data/scenario_table.json`), which is where the drain finding above comes from.
+
+   ![Precision and recall on the holdout as the threshold moves, and PR-AUC, precision and recall on the four walk-forward windows](figures/threshold_tradeoff.png)
+
+   *Left: the holdout result is flat across a wide band of thresholds. Right: across later windows, ranking
+   stays near 0.997 PR-AUC while precision moves.*
+
+9. **Check over later windows (walk-forward).** Walk-forward validation repeats the whole train, calibrate and
+   test cycle over successive later periods, each time training only on earlier data. `src/validate.py` runs
+   four, testing hours 351 to 450, 451 to 550, 551 to 650 and 651 to 743, each picking its own threshold on its own calibration data. Ranking held (PR-AUC 0.9971), but
+   the best threshold moved from 1.0 to 0.8182, 0.9855 and 0.021 (`dashboard/data/walk_forward_results.csv`),
+   and the last window's low threshold gave 88.1% precision against 99.6% to 100% in the other three. I also ran
+   a drift check, `src/monitoring.py`. PSI (Population Stability Index) compares a feature's spread in a new
+   window with the training window: below 0.10 is stable, 0.25 or more means investigate. In hours 701 to 743,
+   `orig_drain_ratio` reached 0.76 and `dest_amount_ratio` 0.26 (`dashboard/data/psi_timeline.csv`). The
+   monitoring runs on PaySim's own later hours, not on live traffic.
+
+10. **Explain the scores.** SHAP is a method that splits each score into how much each input pushed it up or
+    down. `src/explain.py` gives the shares in `dashboard/data/feature_importance.json`: `orig_balance_discrepancy`
+    51.78%, `orig_drain_ratio` 25.08%, `dest_amount_ratio` 14.74%, `amount` 4.48%,
+    `dest_balance_discrepancy` 3.93%.
+
+11. **Export for the live API.** The web function cannot load the full XGBoost and scikit-learn stack.
+    `src/export_model_json.py` writes the trees and the calibration curve to `model/model_export.json`, and
+    `api/score.py` re-implements the scoring with only Python's standard library. `tests/test_export_parity.py` scores 20,000 transactions through both and checks they
+    agree (worst gap about 6.6e-08, as recorded in `api/score.py`).
+
+## Problems I hit
+
+- **A shortcut through the balance columns.** The first model got the raw balance columns, and testing the live
+  dashboard showed it scoring a 12-unit account that moved all 12 units to a recipient who was credited correctly as
+  100% fraud. Fraud in PaySim nearly always empties the sender, so the model learned "balance hit zero". I
+  removed the raw columns (commit 7bda93d) and `tests/test_features.py` guards it.
+- **The shortcut came back through `orig_drain_ratio`.** Re-testing found that a transfer moving 100% of the
+  balance scores 90.2% while one moving 99% scores 0.0000%. In PaySim, fraud almost always moves exactly 100%
+  and legitimate transactions almost never do, so the label itself is the shortcut. Dropping columns cannot fix it,
+  and `MODEL_CARD.md` says so. Real data with account closures would need retraining.
+- **Tuning windows overlapped reporting windows.** Two of the three tuning windows were walk-forward windows, and
+  part of the holdout sat inside the third, so those results were optimistic. Found when I audited the code (commit 6444c5d), fixed
+  by tuning only on windows ending by hour 350 (commit 1588a10), then re-tuned and retrained (commit 5e55aa0).
+  `tests/test_pipeline_guards.py` checks it.
+- **The walk-forward threshold was chosen on the test rows.** `src/validate.py` picked each window's cut-off using
+  that window's own answers, which pushed recall to exactly 1.0 in three of four windows. It now picks on calibration data. The same
+  test file guards it. Fixing both leaks together and re-tuning moved holdout precision from 99.85% to 98.42%. The
+  2026-10-02 retrain (35 trees, calibration on the latest 20% of training steps) moved it to 99.89% (`MODEL_CARD.md`).
+- **A rule to catch partial fraud made things worse.** Scenario tests before deployment (`src/scenarios.py`) showed the
+  model scores a fraud that moves half an account, with nothing credited to the recipient, at 0.0000%. I tried a rule on top that flags transactions where the
+  recipient got far less than sent. On the larger training period it multiplied false alarms and raised cost. I dropped it. The
+  script that measured this was not kept, so no figures are quoted (`MODEL_CARD.md`).
 
 ## Data
 
-| Source | Link | Terms | Size | Period | Refresh |
-|---|---|---|---:|---|---|
-| PaySim (Lopez-Rojas, Elmir and Axelsson, 2016) | [Kaggle](https://www.kaggle.com/datasets/ealaxi/paysim1) | Kaggle dataset licence | 6,362,620 transactions | 743 simulated hours | static |
+| Source | Terms | Size | Period |
+|---|---|---:|---|
+| [PaySim, Lopez-Rojas, Elmir and Axelsson (2016)](https://www.kaggle.com/datasets/ealaxi/paysim1) on Kaggle | Kaggle dataset licence | 6,362,620 transactions | 743 simulated hours |
 
-PaySim simulates mobile money from the logs of an African service, one row per transaction and one step per
-simulated hour. Fraud is 0.13% of all transactions; the training period runs at 0.21% and the holdout at 2.08%.
-The CSV is not committed; download it into `data/`.
-
-## Key design decisions
-
-- **A time split, not a random one.** Fraud patterns move; a random split would let the model see the future.
-  Training stops at hour 490 and tuning at hour 350, before every reporting window.
-- **A threshold from costs, not 0.5.** The cut-off minimises cost with a missed fraud priced at 100 times a
-  false alarm, chosen on calibration data only, so the holdout is never used to tune it.
-- **Five balance features over the raw balance columns.** Testing the live demo showed an earlier model
-  scoring a customer emptying their own account as certain fraud, because it read "balance hits zero" from the
-  raw columns. They were removed in favour of ratio and identity features.
-- **Isotonic calibration.** A frozen-customer decision needs a probability, not just a rank; the Brier score
-  of 0.000131 shows the calibrated scores can be read that way.
-- **A pure-Python port for the live API.** The serverless function cannot load the full ML stack, so the model
-  is exported to JSON and re-implemented in `api/score.py`, with a test proving both give the same scores.
+Fraud is 0.13% of all 6,362,620 transactions. Among TRANSFER and CASH_OUT only, the types the model scores, it is 0.21% in the training period and 2.08% in the holdout (132,136 transactions). The CSV is not
+committed; download it into `data/`.
 
 ## Limits
 
-- **The shortcut is only partly fixed.** `orig_drain_ratio` still encodes a full drain, and the shipped model
-  scores a fully consistent full drain at 90.2% and a 12-unit one at 88.5%, both flagged
-  (`dashboard/data/scenario_table.json`). `MODEL_CARD.md` explains why this is a property of PaySim's labels.
-- **Full-drain fraud only.** Fraud here has one signature: the sender's account is drained to zero. The two
-  sender-side features carry 77% of the model's SHAP attribution, and a fraud that moves half an account with
-  nothing credited to the recipient scores 0.0000%. A rule-based patch for partial skims was tested on an
-  earlier model and rejected because it multiplied false alarms on the training period.
-- **PaySim is a simulator.** Once these features exist its fraud is almost deterministic, which is why the
-  scores are so high. In the notebook a random forest reaches PR-AUC 1.0000 on the holdout and a class-weighted
-  XGBoost 0.9989. The evaluation method carries over to real data; the score does not.
-- **The holdout is fraud-heavy** (2.1% against 0.30% for TRANSFER and CASH_OUT over the whole simulation), and
-  precision depends on that mix. At the whole-simulation rate the model would raise about 23 false alarms per
-  million screened transactions and keep 99.2% precision (`precision_at_real_fraud_rate` in
-  `dashboard/data/business_impact.json`).
-- **Money figures are simulated units**, and the cost of a false alarm is an assumption, not a measurement.
-
-## Project structure
-
-```
-src/            features, tuning, training, walk-forward validation, monitoring, SHAP, scenarios,
-                business_impact.py (value stopped by each screen), make_figures.py
-api/score.py    pure-Python port of the model behind the live demo, parity-tested
-dashboard/      Streamlit dashboard and the precomputed results it reads
-model/          trained model, tuned settings, JSON export
-tests/          63 tests: time split, both fixed leaks, accounting identity, threshold, PSI, API, port parity
-MODEL_CARD.md   intended use, evaluation, limitations
-docs/           METHODOLOGY.md: tuning, walk-forward details, drift findings, the tests
-Fraud_Detection_System.ipynb   the analysis in four parts, executed end to end;
-                               charts in figs/, numbers in outputs/notebook_results.json
-```
-
-The notebook is the analysis behind the pipeline: what the data can support (two real frauds worked through,
-the ledger rule turned into features, a leakage guard and a time split), which transfers are fraudulent (a
-two-question tree, XGBoost, four model families, SMOTE against class weights, SHAP), what it is worth, and
-limits. Its scores come from its own wider feature set, not the shipped model.
+- **PaySim is a simulator.** Once these features exist its fraud is nearly deterministic, which is why the scores
+  are so high. In the notebook a random forest reaches a PR-AUC of 1.0000. The method carries over to real data. The scores do not.
+- **The model detects full drains of the sender's account, nothing broader.** A fraud that skims part of an
+  account scores near 0%, the same as an ordinary transaction.
+- **The holdout is fraud-heavy** (2.08% against 0.30% for TRANSFER and CASH_OUT over the whole simulation). At
+  that whole-simulation rate the model would raise about 23 false alarms per million transactions and keep 99.2%
+  precision (`business_impact.json`).
+- **One fixed threshold.** The best cut-off moved a lot between windows (0.021 to 1.0), so a deployment would
+  review it on a schedule.
+- **Money figures are simulated units**, and the 100:1 cost ratio is an assumption.
+- **The live demo** reflects the model above. It loads `model/model_export.json` from the main branch, so
+  pushing a new export changes its scores.
 
 ## How to run
+
+Python 3.12 or later. Main libraries: pandas, XGBoost, scikit-learn, Optuna, SHAP.
 
 ```bash
 pip install -r requirements.txt   # exact pins; requirements-lock.txt pins everything
@@ -194,21 +198,25 @@ make test        # 63 tests, no dataset needed
 # download PaySim from Kaggle into data/, then:
 make tune        # 40 Optuna trials; the recorded run took 4 hours on a shared machine
 make train       # train and save the model, about a minute
-make validate    # four walk-forward folds
+make validate    # four walk-forward windows
 python src/business_impact.py --data data/PS_20174392719_1491204439457_log.csv
 make figures     # redraw the README charts
 ```
 
-## Skills demonstrated
+## Project structure
 
-- Feature engineering from accounting identities: `src/` features
-- Leakage control with a strict time split and tuning windows that end before reporting: `src/`, `tests/`
-- Hyperparameter search with Optuna and early stopping: `src/`, `model/`
-- Probability calibration and a cost-based decision threshold: `src/train.py`
-- Walk-forward validation and PSI drift monitoring: `src/`, the dashboard's monitoring tab
-- Explainability with SHAP for every scored transaction: the dashboard
-- Serving a model as a serverless API with a parity-tested port: `api/score.py`
-- Reporting results in money and in honest customers frozen: `src/business_impact.py`
+```
+src/            features, tuning, training, walk-forward validation, monitoring, SHAP, scenarios,
+                business_impact.py (value stopped by each screen), make_figures.py
+api/score.py    standard-library port of the model behind the live demo
+dashboard/      Streamlit dashboard and the precomputed results it reads
+model/          trained model, tuned settings, JSON export
+tests/          63 tests: time split, the two fixed leaks, accounting identity, threshold, PSI, API, port parity
+MODEL_CARD.md   intended use, evaluation, limitations
+docs/           METHODOLOGY.md: tuning, walk-forward details, drift findings
+Fraud_Detection_System.ipynb   data exploration and model comparison; its scores come from its own
+                               wider feature set, not the shipped model
+```
 
 ## License
 
