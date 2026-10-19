@@ -1,10 +1,9 @@
 {
   "provenance": {
-    "run_date_utc": "2026-10-09",
-    "runtime_minutes": 27,
-    "peak_memory_gb": 4.3,
-    "git_commit": "247873d6daa89e837f5b681c0b1db88a01cc2fed",
-    "uncommitted_code_changes": true,
+    "run_date_utc": "2026-10-19",
+    "runtime_minutes": 36,
+    "git_commit": "fce6ce56a23cdb5155cf3a6079b11cec9fb18463",
+    "uncommitted_code_changes": false,
     "python": "3.13.9",
     "packages": {
       "numpy": "2.4.6",
