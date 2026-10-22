@@ -137,16 +137,18 @@ below it needs the 470MB PaySim CSV, and the notebook is the heavy one:
 | `make validate` | yes | under two minutes, four walk-forward folds |
 | the notebook, end to end | yes | 27 minutes for the stored run (peak memory was about 4.3 GB on the 2026-10 run) |
 
-The notebook is the analysis behind the pipeline, organised in four parts around three questions (which
-transfers are fraudulent, how much fraud value a model stops, how many honest customers it freezes). Part 1
+The notebook is the analysis behind the pipeline, written as a guided walkthrough a junior analyst can follow
+cell by cell. It has three parts of numbered steps; each step has a short explanation, a Concept line, one small
+code cell with a comment per line and a printout, and a Check your work cell with asserts. Part 1, Prepare Data,
 loads the CSV with `pd.read_csv`, checks it, explores it by type, amount, time of day, account and balance
 pattern, works through two real frauds, turns the ledger identity into features behind a leakage guard, and
-splits by time. Part 2 builds a two-question tree, XGBoost, a cut-off chosen from costs and restated at the real
-fraud rate, compares four model families, checks performance period by period, tests SMOTE against class
-weights, and explains decisions with SHAP. Part 3 counts the fraud value stopped and the honest customers
-frozen by each screen. Part 4 states how the shipped pipeline differs, the limitations, and writes
-`outputs/notebook_results.json`, which every number quoted from the notebook is checked against. It ends with
-exercises and a glossary.
+splits by time. Part 2, Build Model, scores a documented rule as the baseline, then a two-question tree,
+XGBoost, a cut-off chosen from costs and restated at the real fraud rate, three more model families, a
+period-by-period check, SMOTE against class weights, and SHAP explanations. Part 3, Communicate Results, counts
+the fraud value stopped and the honest customers frozen by each screen, charts the model's drivers, runs
+`engineer_features` from `src/features.py` on two frauds, reads the shipped model's holdout files, states how the
+shipped pipeline differs, and writes `outputs/notebook_results.json`, which every number quoted from the notebook
+is checked against. It ends with a summary, limitations, next steps and a glossary.
 
 Thread counts are bounded by `N_JOBS` in the settings cell because boosted models copy the 2.6-million-row
 training frame per thread, so the peak memory is set by how many copies are alive at once. Random forests use
