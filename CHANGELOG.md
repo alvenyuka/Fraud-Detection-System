@@ -42,8 +42,9 @@ commit history holds the detail.
   transfers is unproven; PR-AUC is listed first; the precision bullet gives the 99.2% expected at the whole
   simulation's lower fraud rate; the threshold step names both assumed costs and where they are set; the flat
   result from 0.5 to 0.8852 cites `dashboard/data/threshold_cost_curve.csv`; Limits no longer says the method
-  "carries over" to real data; the balance-fingerprint caption reads the chart the right way round (honest
-  senders' unrecorded balances drive the 0.99; fraud shows on the recipient side, 0.65).
+  "carries over" to real data; the balance-fingerprint caption reads the chart the right way round (the 0.99
+  comes from honest senders with a recorded balance who send more than it; fraud shows on the recipient side,
+  0.65).
 - Demo Limits card: precision at the simulator's fraud rate uses the TRANSFER and CASH_OUT rate (0.30%, about 23
   false alarms per million, 99.2% precision, from `dashboard/data/business_impact.json`) instead of the
   all-types 0.13%. Text only; the live page changes after a redeploy.
