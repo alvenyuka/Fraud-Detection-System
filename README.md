@@ -23,11 +23,15 @@ The model was fit on hours 1 to 392 and calibrated on hours 393 to 490 (calibrat
 below, unless marked otherwise, is scored on the 132,136 TRANSFER and CASH_OUT transactions after hour 490, which the
 model never saw. Of those, 2,754 are fraud.
 
-- **It caught 2,742 of the 2,754 frauds (recall 99.6%).** Recall is the share of frauds the model flags.
-- **It froze 3 honest transfers (precision 99.9%).** Precision is the share of flags that were real fraud.
-- **It stopped 99.98% of the fraud value**, against 1.1% for the simulator's own built-in flag.
+**Every figure here comes from a simulator, so how well the model would work on a real operator's transfers is
+unproven.** PaySim's fraud follows a few fixed patterns, which a model can learn almost perfectly (see Limits).
+
 - **Ranking quality: PR-AUC 0.9984.** PR-AUC is the area under the precision-recall curve, the average precision
   across recall levels; a random model scores about the fraud rate, and 1.0 is perfect.
+- **It caught 2,742 of the 2,754 frauds (recall 99.6%).** Recall is the share of frauds the model flags.
+- **It froze 3 honest transfers (precision 99.9%).** Precision is the share of flags that were real fraud. The
+  holdout is fraud-heavy; at the whole simulation's lower fraud rate precision would be about 99.2% (Limits).
+- **It stopped 99.98% of the fraud value**, against 1.1% for the simulator's own built-in flag.
 - **It held up over time: walk-forward PR-AUC 0.9971.** Walk-forward means retraining and re-testing on four
   successive later windows (step 8). It differs from 0.9984 because it averages four separate models on different
   test windows, not the one holdout. Precision averaged 96.9% over those windows and fell to 88.1% in the last. The
@@ -39,9 +43,9 @@ model never saw. Of those, 2,754 are fraud.
 
 | Measure on the holdout | Value | What it means |
 |---|---:|---|
+| PR-AUC | 0.9984 | Area under the precision-recall curve; 1.0 is perfect |
 | Recall | 99.6% (2,742 of 2,754) | Frauds caught |
 | Precision | 99.9% (3 false alarms) | Flags that were fraud |
-| PR-AUC | 0.9984 | Area under the precision-recall curve; 1.0 is perfect |
 | Brier score | 0.000131 | Average squared error of the predicted probabilities; 0 is perfect |
 | Flag threshold | 0.8852 | Scores at or above this are flagged |
 | Walk-forward PR-AUC (4 windows) | 0.9971 ± 0.0020 | Ranking holds in later windows |
@@ -110,10 +114,13 @@ Each step adds one idea.
 
 7. **Pick the threshold from money.** The threshold is the score above which a transaction is flagged. A missed
    fraud costs far more than a false alarm, so `pick_best_threshold` in `src/features.py` tries every cut-off
-   and keeps the cheapest, pricing a missed fraud at 100 times a false alarm. That 100 is my assumption, not a
-   measured cost. It uses the calibration hours, never the test rows, and gave 0.8852. Any cut-off from 0.5 up
-   to 0.8852 gives the same result on the holdout (2,742 caught, 3 frozen), because the calibrated model gives only a few
-   distinct scores. `src/scenarios.py` also probes the model with made-up transfers
+   and keeps the cheapest. It prices a missed fraud at 1,000 cost units (the money is lost) and a false alarm at
+   10 (a review and a customer locked out), the constants `COST_PER_MISSED_FRAUD` and `COST_PER_FALSE_ALARM` in
+   the same file. Both are my assumption, not costs measured at any operator; what matters is that a miss costs
+   100 times a false alarm. It uses the calibration hours, never the test rows, and gave 0.8852. Any cut-off from
+   0.5 up to 0.8852 gives the same result on the holdout (2,742 caught, 3 frozen; `src/business_impact.py` and
+   `dashboard/data/threshold_cost_curve.csv`), because the calibrated model gives only a few distinct scores.
+   `src/scenarios.py` also probes the model with made-up transfers
    (`dashboard/data/scenario_table.json`). In that test a transfer that moves 99% of an account scores 0%, and
    one that moves 100% scores 90.2%.
 
@@ -181,8 +188,10 @@ committed; download it into `data/`.
 
 ## Limits
 
-- **PaySim is a simulator.** Once these features exist its fraud is nearly deterministic, which is why the scores
-  are so high. In the notebook a random forest reaches a PR-AUC of 1.0000. The method carries over to real data. The scores do not.
+- **PaySim is a simulator, and no real operator's data was used.** Once these features exist its fraud is nearly
+  deterministic, which is why the scores are so high. In the notebook a random forest reaches a PR-AUC of 1.0000.
+  The method (time split, cost-based threshold, walk-forward checks, drift monitoring) can be reused on real
+  transfers; these scores say nothing about how it would do there.
 - **The model detects full drains of the sender's account, nothing broader.** A fraud that skims part of an
   account scores near 0%, the same as an ordinary transaction.
 - **The holdout is fraud-heavy** (2.08% against 0.30% for TRANSFER and CASH_OUT over the whole simulation). At
@@ -190,7 +199,8 @@ committed; download it into `data/`.
   precision (`business_impact.json`).
 - **One fixed threshold.** The best cut-off moved a lot between windows (0.021 to 1.0), so a deployment would
   review it on a schedule.
-- **Money figures are simulated units**, and the 100:1 cost ratio is an assumption.
+- **Money figures are simulated units**, and the costs behind the threshold (1,000 per missed fraud, 10 per false
+  alarm) are my assumption, not an operator's figures.
 - **The live demo** reflects the model above. It loads `model/model_export.json` from the main branch, so
   pushing a new export changes its scores.
 
