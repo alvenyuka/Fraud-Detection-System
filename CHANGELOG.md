@@ -19,8 +19,8 @@ The notebook becomes a guided build a newcomer can follow cell by cell. No model
 
 - `Fraud_Detection_System.ipynb` (written by `build_notebook.py`) is rebuilt in three parts, Prepare Data, Build
   Model and Communicate Results, of 61 numbered steps. Each step has one instruction, a Concept line, one small
-  code cell, printed output and a Check your work cell (62 in all) that stops the run if the step went wrong.
-- Every top-level statement in a code cell has a comment describing its own line (552 of 552); no comment
+  code cell, printed output and a Check your work cell (63 in all) that stops the run if the step went wrong.
+- Every top-level statement in a code cell has a comment describing its own line (558 of 558), as does every statement nested inside them (77 of 77); no comment
   text repeats except the "Check your work" header.
 - Notebook wording: it opens by saying real-world performance is unproven; XGBoost is the model carried
   forward, not the best scorer (the random forest is higher); LightGBM's failure is not given an untested
