@@ -29,6 +29,15 @@ The notebook becomes a guided build a newcomer can follow cell by cell. No model
   notebook's model is tested on one later window without retraining.
 - The notebook was executed on the full PaySim file at commit f386128 in 19 minutes; the run record names
   that commit with no uncommitted code.
+- Second review: the honest 0.99 fingerprint correlation is explained by honest senders with a recorded balance
+  who send more than it (a new step prints and checks that share); the tree's sender rule is said to pass
+  unrecorded senders too; `orig_drain_ratio` is named as still carrying the "account emptied" signal; the label
+  follows from the ledger errors with the raw balances, not from the errors alone; class-weighted outputs are
+  called scores, with calibration, isotonic regression and log-odds defined where first used; every statement
+  inside a loop, function, with or try block also has its own comment.
+- `docs/METHODOLOGY.md`: the holdout fraud rate is compared with the 0.30% TRANSFER and CASH_OUT rate (about 7
+  times), the notebook comparison adds the tree and baseline rows and cites the run of record, and the test count
+  is 73 with no skip.
 - `tests/test_readme_numbers.py` takes the fingerprint correlations (0.99, 0.09, 0.65) from the notebook's
   printed output instead of the chart.
 

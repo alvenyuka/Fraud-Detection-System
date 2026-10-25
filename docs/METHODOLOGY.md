@@ -30,7 +30,7 @@ Mobile-money fraud classifier on PaySim, a simulator whose fraud is near-determi
 
 ## Question
 
-Mobile-money fraud is mostly a precision problem. The PaySim dataset has a 0.13% positive rate, so a model that says "not fraud" every time scores 99.87% accuracy while catching zero fraud. Production fraud-ops workflows freeze customer funds on a flag, so false positives carry direct trust and regulatory cost. This repo reports precision on a strict time-based holdout, with no row of the training window drawn from after the test window: 99.89% on the single holdout, and 96.9% on average across four walk-forward folds (lowest fold 88.1%). The holdout has a 2.08% fraud rate, about 16 times the dataset's 0.13% overall rate, so precision at production prevalence would be lower.
+Mobile-money fraud is mostly a precision problem. The PaySim dataset has a 0.13% positive rate, so a model that says "not fraud" every time scores 99.87% accuracy while catching zero fraud. Production fraud-ops workflows freeze customer funds on a flag, so false positives carry direct trust and regulatory cost. This repo reports precision on a strict time-based holdout, with no row of the training window drawn from after the test window: 99.89% on the single holdout, and 96.9% on average across four walk-forward folds (lowest fold 88.1%). The holdout has a 2.08% fraud rate, about 7 times the 0.30% TRANSFER and CASH_OUT rate over the whole simulation (`dashboard/data/business_impact.json`), so precision at that prevalence would be lower: about 99.2%, with about 23 false alarms per million transactions.
 
 > **A note on PaySim.** PaySim is a simulator, not a sample of real traffic, and it is widely used in introductory fraud-detection tutorials, so it's a common choice. What this repo adds is the evaluation rigour: strict time-based split, calibrated probabilities, cost-sensitive threshold selection, a model comparison on the notebook's own feature set, and precision restated at the real fraud rate.
 
@@ -272,7 +272,7 @@ The cost-optimal threshold swings from fold to fold (min 0.0210, max 1.0000, coe
 ### Exploratory model comparison (from the notebook, not the shipped pipeline)
 
 The notebook compares four model families, a two-question tree and a baseline rule on its own raw-plus-error-balance features, on the same time split
-(train to step 490, test after it). From its full run finished on 9 October 2026:
+(train to step 490, test after it). From the run of record in `outputs/notebook_results.json` (the 2026-10-25 run at commit f386128):
 
 | Model | PR-AUC | ROC-AUC | Recall @ 99% precision |
 |---|---|---|---|
@@ -281,14 +281,17 @@ The notebook compares four model families, a two-question tree and a baseline ru
 | XGBoost, class-weighted (482, from the training labels) | 0.9989 | 0.9990 | 0.9989 |
 | Logistic regression | 0.7901 | 0.9795 | 0.4503 |
 | LightGBM, class-weighted (482), min_child_samples 5 | 0.0338 | 0.6956 | 0.0000 |
+| Two-question tree (the two ledger errors, depth 2) | 0.4892 | 0.8694 | 0.0000 |
+| Baseline rule (TRANSFER above 200,000) | 0.0283 | 0.5888 | 0.0000 |
 
 The previous stored run (30 September 2026) computed the class weight over training and test labels together
 (336) and showed this XGBoost at 0.4771. With the weight taken from the training labels only, and the thread
 count no longer hard-coded, it reaches 0.9989, so the earlier explanation of that failure is withdrawn. SMOTE
 against class weighting is now a 0.06-point difference. The shipped pipeline treats the class weight as a
 hyperparameter: `src/tune.py`, choosing only on earlier data, picked 2.14. XGBoost is still the shipped model
-because, with tuned settings and the engineered balance features, it matches the random forest's ranking (holdout
-PR-AUC 0.9984) as a single, explainable model, and the forest's literal 1.0000 on a simulator is more likely
+because, with tuned settings and the engineered balance features, it comes within 0.0016 of the forest's
+ranking (holdout PR-AUC 0.9984 against the notebook forest's 1.0000, on different inputs) as a single, explainable
+model, and the forest's literal 1.0000 on a simulator is more likely
 a sign of PaySim's determinism than of a better model. LightGBM collapses on the later window with these
 settings; the notebook does not isolate which setting causes it.
 
@@ -312,8 +315,8 @@ Three more, each of which changes how a number above should be read:
 make test        # or: python -m pytest
 ```
 
-55 tests, a couple of minutes, run in CI on Python 3.12 and 3.13 on every push
-(one, which needs optuna, is skipped there). CI installs the exact versions pinned
+73 tests, a couple of minutes, run in CI on Python 3.12 and 3.13 on every push.
+CI installs the exact versions pinned
 in `requirements.txt`, so the committed pickle is loaded by the library versions
 that wrote it. None needs the 470MB PaySim CSV: each one builds a small frame by hand or
 from a fixed seed. That is deliberate. The point is not to re-check the model's
