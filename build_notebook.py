@@ -55,17 +55,20 @@ two-question tree, to XGBoost and three other model families. You will choose a 
 mistakes, test the model period by period, explain single decisions, and finish with the fraud value each screen
 stops and the honest customers it freezes.
 
-**The finished result.** On the 132,136 test transactions after hour 490, the best single model you build here
-(XGBoost with a class weight) reaches a PR-AUC of 0.9989. At the cheapest cut-off it stops 99.90% of the fraud
+**The finished result.** On the 132,136 test transactions after hour 490, XGBoost with a class weight, the
+model this notebook carries forward, reaches a PR-AUC of 0.9989. At the cheapest cut-off it stops 99.90% of the fraud
 value and freezes 2 honest customers; PaySim's own built-in flag stops 1.11%. The shipped model in `src/`, built
 on the same ideas with fewer inputs, catches 2,742 of 2,754 frauds and freezes 3 honest transfers (Step 3.6 reads
 those figures from its output files).
 
 **How to use this notebook.** Run it from the top. Each step has three parts: a short explanation with one
 **Concept** line, one small code cell, and a **Check your work** cell. If a Check cell fails, the step above it
-went wrong; fix that step before going on. The recorded run took 36 minutes (Step 3.7 prints the run time) and
-needs several GB of free memory. PaySim is a simulator, so every score below says more about the method than about the accuracy to expect
-on a real network (see Limitations at the end).
+went wrong; fix that step before going on. Step 3.7 records how long the run took, and it needs several GB of
+free memory.
+
+**PaySim is a simulator, so how well any model here would work on a real operator's transfers is unproven.**
+Every score below says more about the method than about the accuracy to expect on a real network (see
+Limitations at the end).
 """)
 
 # =====================================================================
@@ -92,18 +95,23 @@ library fails here, in the first cell, instead of half an hour into the run.
 """)
 
 code("""
-# Standard library: file paths, timing and warning control
+# os: create the folders for charts and results
 import os
+# sys: let Python find the project's own code in src/ (Step 3.6)
 import sys
+# time: the clock that times the whole run
 import time
+# warnings: hide library notices about future versions
 import warnings
 
-# Plotting
+# matplotlib: draw and save every chart
 import matplotlib.pyplot as plt
+# seaborn: chart styling and the heatmaps
 import seaborn as sns
 
-# Arrays and tables
+# numpy: fast arrays of numbers
 import numpy as np
+# pandas: the tables the whole notebook works on
 import pandas as pd
 
 # The measures used to score every model
@@ -112,6 +120,14 @@ from sklearn.metrics import (average_precision_score, confusion_matrix, precisio
 
 # Print the versions, so a reader can match them if a number differs
 print("pandas", pd.__version__, "| numpy", np.__version__)
+""")
+
+code("""
+# Check your work
+# pandas 2 or later, the version family this notebook was written for
+assert int(pd.__version__.split(".")[0]) >= 2, f"expected pandas 2 or later, got {pd.__version__}"
+# The scoring functions imported
+assert callable(average_precision_score) and callable(precision_recall_curve), "the scoring functions did not import"
 """)
 
 md("""
@@ -145,7 +161,16 @@ RF_JOBS = 4
 # Seed numpy's random generator
 np.random.seed(SEED)
 
+# Print the settings, so the output records the values this run used
 print("SEED", SEED, "| SPLIT_STEP", SPLIT_STEP, "| COST_RATIO", COST_RATIO, "| N_JOBS", N_JOBS, "| RF_JOBS", RF_JOBS)
+""")
+
+code("""
+# Check your work
+# The seed every later step relies on
+assert SEED == 42, f"expected seed 42, got {SEED}"
+# The teaching cost ratio used in Step 2.14
+assert COST_RATIO == 10, f"expected a cost ratio of 10, got {COST_RATIO}"
 """)
 
 md("""
@@ -159,23 +184,29 @@ code("""
 # Show decimals with thousands separators and two places
 pd.options.display.float_format = "{:,.2f}".format
 
-# A light chart style and a default chart size
+# A light chart style with grid lines
 sns.set_theme(style="whitegrid", context="notebook")
+# Every chart 10 by 5 inches unless a step says otherwise
 plt.rcParams["figure.figsize"] = (10, 5)
 
-# Hide two kinds of library warnings that are about future versions, not about this analysis
+# Hide notices about future library versions
 warnings.filterwarnings("ignore", category=FutureWarning)
+# Hide notices libraries raise about their settings; they do not change the results
 warnings.filterwarnings("ignore", category=UserWarning)
 
-# Folders for the charts and for the results file
+# A folder for the charts
 os.makedirs("figs", exist_ok=True)
+# A folder for the results file
 os.makedirs("outputs", exist_ok=True)
+# Confirm both folders exist
 print("figs/ exists:", os.path.isdir("figs"), "| outputs/ exists:", os.path.isdir("outputs"))
 """)
 
 code("""
 # Check your work
+# The split hour is 490
 assert SPLIT_STEP == 490, f"the split should be at hour 490, got {SPLIT_STEP}"
+# Both output folders exist
 assert os.path.isdir("figs") and os.path.isdir("outputs"), "the output folders were not created"
 """)
 
@@ -194,15 +225,19 @@ code("""
 # Read the whole file into one table
 df = pd.read_csv("data/PS_20174392719_1491204439457_log.csv")
 
-# What did we get?
+# The object type: a pandas DataFrame
 print(type(df))
+# Rows and columns
 print("rows, columns:", df.shape)
+# Memory the table takes
 print(f"memory: {df.memory_usage(deep=True).sum() / 1e9:.2f} GB")
+# The first five rows
 df.head()
 """)
 
 code("""
 # Check your work
+# The full file: 6,362,620 rows and 11 columns
 assert df.shape == (6_362_620, 11), f"expected 6,362,620 rows and 11 columns, got {df.shape}"
 """)
 
@@ -220,12 +255,15 @@ either one could change the other.
 code("""
 # Copy rows 2 and 3 with their original column names
 raw_examples = df.loc[[2, 3]].copy()
+# Type and size of the copy
 print(type(raw_examples), raw_examples.shape)
+# Show the two kept rows
 raw_examples
 """)
 
 code("""
 # Check your work
+# Both kept rows are frauds
 assert raw_examples["isFraud"].tolist() == [1, 1], "rows 2 and 3 should both be fraud"
 """)
 
@@ -248,13 +286,15 @@ new_names = {
     "newbalanceDest": "newBalanceDest",
 }
 
-# Rename them
+# Apply the new names to the table
 df = df.rename(columns=new_names)
+# Print the column names to confirm the change
 print(list(df.columns))
 """)
 
 code("""
 # Check your work
+# The new name is there and the old one is gone
 assert "oldBalanceOrig" in df.columns and "oldbalanceOrg" not in df.columns, "the rename did not apply"
 """)
 
@@ -285,13 +325,17 @@ missing_cells = int(df.isna().sum().sum())
 # Count rows that repeat an earlier row exactly
 duplicated_rows = int(df.duplicated().sum())
 
+# Print the number of missing cells
 print("missing cells:", missing_cells)
+# Print the number of duplicated rows
 print("duplicated rows:", duplicated_rows)
 """)
 
 code("""
 # Check your work
+# No missing cells
 assert missing_cells == 0, f"expected no missing cells, got {missing_cells}"
+# No duplicated rows
 assert duplicated_rows == 0, f"expected no duplicated rows, got {duplicated_rows}"
 """)
 
@@ -306,22 +350,29 @@ code("""
 # The four balance columns, used in several later steps
 balance_cols = ["oldBalanceOrig", "newBalanceOrig", "oldBalanceDest", "newBalanceDest"]
 
-# Transactions with an amount of zero or less, and how many of them are fraud
+# True where the amount is zero or less
 zero_amount = df["amount"] <= 0
+# How many of those rows are fraud
 zero_amount_frauds = int((zero_amount & (df["isFraud"] == 1)).sum())
 
 # Rows where any balance is negative
 negative_balance_rows = int((df[balance_cols] < 0).any(axis=1).sum())
 
+# Print the zero amounts and their frauds
 print(f"amount <= 0: {int(zero_amount.sum())} (of which fraud: {zero_amount_frauds})")
+# Print the rows with a negative balance
 print("rows with a negative balance:", negative_balance_rows)
+# Print the first and last hour and how many distinct hours there are
 print(f"hours: {df['step'].min()} to {df['step'].max()}, {df['step'].nunique()} distinct")
 """)
 
 code("""
 # Check your work
+# No balance is negative
 assert negative_balance_rows == 0, f"expected no negative balances, got {negative_balance_rows}"
+# 16 zero amounts, all fraud
 assert int(zero_amount.sum()) == 16 and zero_amount_frauds == 16, "expected 16 zero amounts, all fraud"
+# Every hour from 1 to 743 is present
 assert df["step"].nunique() == 743 and df["step"].min() == 1, "expected every hour from 1 to 743"
 """)
 
@@ -345,6 +396,14 @@ story_cols = ["type", "amount", "oldBalanceOrig", "newBalanceOrig", "oldBalanceD
 
 # Show rows 2 and 3
 df.loc[[2, 3], story_cols]
+""")
+
+code("""
+# Check your work
+# Both rows move 181 and are fraud
+assert df.loc[[2, 3], "amount"].tolist() == [181.0, 181.0], "rows 2 and 3 should each move 181"
+# Row 3's recipient had 21,182 before and 0 after
+assert df.loc[3, "oldBalanceDest"] == 21_182 and df.loc[3, "newBalanceDest"] == 0, "row 3's recipient balances changed"
 """)
 
 md("""
@@ -372,18 +431,27 @@ by_type = df.groupby("type").agg(transactions=("amount", "size"), value=("amount
 # The share of each type's transactions that are fraud
 by_type["fraud_rate"] = by_type["frauds"] / by_type["transactions"]
 
+# Type and size of the summary
 print(type(by_type), by_type.shape)
+# Show it, most frauds first
 by_type.sort_values("frauds", ascending=False)
 """)
 
 code("""
 # Check your work
+# The three other types have no fraud
 assert by_type.loc[["CASH_IN", "DEBIT", "PAYMENT"], "frauds"].sum() == 0, "fraud should occur only in TRANSFER and CASH_OUT"
+# All 8,213 frauds are counted
 assert int(by_type["frauds"].sum()) == 8_213, f"expected 8,213 frauds, got {int(by_type['frauds'].sum())}"
 """)
 
 md("""
 ### Step 1.11: Chart the count and value by type
+
+Draw the two columns of the table side by side, so the common types and the money-moving types can be compared.
+
+**Concept: count against value.** A type can be common but move little money, or rare but move a lot. Fraud
+losses are counted in money, so both views matter.
 """)
 
 code("""
@@ -392,18 +460,30 @@ fig, axes = plt.subplots(1, 2, figsize=(14, 4.5))
 
 # Left: number of transactions, in millions
 (by_type["transactions"] / 1e6).sort_values().plot(kind="barh", ax=axes[0], color="#4a7ab5")
+# Title of the transactions panel
 axes[0].set_title("Transactions by type (millions)")
+# Label the transactions axis in millions
 axes[0].set_xlabel("Transactions (millions)")
 
 # Right: money moved, in billions
 (by_type["value"] / 1e9).sort_values().plot(kind="barh", ax=axes[1], color="#4a7ab5")
+# Title of the value panel
 axes[1].set_title("Value moved by type (billions)")
+# Label the value axis in billions
 axes[1].set_xlabel("Value (billions of simulated units)")
 
-# Save for the README and show
+# Keep the two type panels from overlapping
 plt.tight_layout()
+# Save the type chart as figs/transactions_by_type.png
 plt.savefig("figs/transactions_by_type.png", dpi=150, bbox_inches="tight")
+# Show the type chart
 plt.show()
+""")
+
+code("""
+# Check your work
+# The type chart was saved for the README
+assert os.path.isfile("figs/transactions_by_type.png"), "figs/transactions_by_type.png was not written"
 """)
 
 md("""
@@ -425,12 +505,15 @@ n_fraud = int(df["isFraud"].sum())
 # Their total value, in billions
 fraud_value_billions = df.loc[df["isFraud"] == 1, "amount"].sum() / 1e9
 
+# The count is a plain Python int
 print(type(n_fraud))
+# Print the count, its share and its value
 print(f"frauds: {n_fraud:,} of {len(df):,} transactions ({n_fraud / len(df):.4%}), worth {fraud_value_billions:.1f} billion")
 """)
 
 code("""
 # Check your work
+# 8,213 frauds in the file
 assert n_fraud == 8_213, f"expected 8,213 frauds, got {n_fraud}"
 """)
 
@@ -458,12 +541,15 @@ accuracy = (lazy_prediction == df["isFraud"]).mean()
 # Frauds the lazy detector caught
 lazy_frauds_caught = int(((lazy_prediction == 1) & (df["isFraud"] == 1)).sum())
 
+# Print the accuracy and the frauds caught
 print(f"accuracy: {accuracy:.2%}   frauds caught: {lazy_frauds_caught}")
 """)
 
 code("""
 # Check your work
+# 99.87% accurate
 assert round(accuracy * 100, 2) == 99.87, f"expected 99.87% accuracy, got {accuracy:.4%}"
+# Yet it catches no fraud
 assert lazy_frauds_caught == 0, "the lazy detector should catch nothing"
 """)
 
@@ -486,27 +572,35 @@ active_types = df["type"].isin(["TRANSFER", "CASH_OUT"])
 # log10 of the amount (plus 1, so an amount of 0 does not break the log)
 log_amount = np.log10(df.loc[active_types, "amount"] + 1)
 
-# True where the active row is fraud
+# True where the row is fraud, for the TRANSFER and CASH_OUT rows only
 is_fraud = df.loc[active_types, "isFraud"] == 1
 
+# Type and length of the log amounts, and the frauds among them
 print(type(log_amount), log_amount.shape, "| frauds among them:", int(is_fraud.sum()))
 """)
 
 code("""
-# One histogram for honest rows and one for fraud, on the same axis
+# A blank chart for the amount histograms
 fig, ax = plt.subplots(figsize=(10, 4.5))
+# Histogram of the honest amounts
 ax.hist(log_amount[~is_fraud], bins=80, density=True, alpha=0.6, label="honest")
+# Histogram of the fraud amounts, on the same axis
 ax.hist(log_amount[is_fraud], bins=80, density=True, alpha=0.6, label="fraud")
 
-# Titles and labels
+# Title of the amount chart
 ax.set_title("Amount of TRANSFER and CASH_OUT transactions, fraud against honest")
+# Label the x-axis with the log scale used
 ax.set_xlabel("log10(amount + 1)")
+# Label the y-axis: share of rows per bin
 ax.set_ylabel("Density")
+# Key for the honest and fraud colours
 ax.legend()
 
-# Save and show
+# Keep the amount chart inside its margins
 plt.tight_layout()
+# Save it as figs/amount_distribution.png
 plt.savefig("figs/amount_distribution.png", dpi=150, bbox_inches="tight")
+# Show the amount chart
 plt.show()
 """)
 
@@ -517,13 +611,17 @@ amount_summary = df.loc[active_types].groupby("isFraud")["amount"].describe()
 # Frauds sitting exactly on PaySim's 10,000,000 cap for a single fraudulent transfer
 frauds_at_cap = int(((df["amount"] == 10_000_000) & (df["isFraud"] == 1)).sum())
 
+# Print how many frauds sit on the cap
 print("frauds of exactly 10,000,000:", frauds_at_cap)
+# Show the summary table
 amount_summary
 """)
 
 code("""
 # Check your work
+# 287 frauds sit on the cap
 assert frauds_at_cap == 287, f"expected 287 frauds at the cap, got {frauds_at_cap}"
+# No fraud is above the cap
 assert amount_summary.loc[1, "max"] == 10_000_000, "the largest fraud should be the 10,000,000 cap"
 """)
 
@@ -544,52 +642,75 @@ day = (df["step"] - 1) // 24 + 1
 
 # Transactions and frauds per day
 per_day = df.groupby(day).agg(transactions=("amount", "size"), frauds=("isFraud", "sum"))
+# Type and size of the daily table
 print(type(per_day), per_day.shape)
+# The first five days
 per_day.head()
 """)
 
 code("""
-# Bars: transactions per day, in thousands
+# A wide blank chart for the daily counts
 fig, ax = plt.subplots(figsize=(12, 4.5))
+# Bars: transactions per day, in thousands
 ax.bar(per_day.index, per_day["transactions"] / 1e3, color="#4a7ab5", label="transactions (thousands)")
+# Label the x-axis with the day
 ax.set_xlabel("Simulated day")
+# Label the left y-axis with the transactions
 ax.set_ylabel("Transactions (thousands)")
 
-# Line on a second axis: frauds per day
+# A second y-axis on the right for the frauds
 ax2 = ax.twinx()
+# Line: frauds per day
 ax2.plot(per_day.index, per_day["frauds"], color="#c0504d", marker="o", label="frauds")
+# Label the right y-axis with the frauds
 ax2.set_ylabel("Frauds")
+# Leave headroom above the highest fraud count
 ax2.set_ylim(0, per_day["frauds"].max() * 1.3)
+# Turn off the second axis's grid so the two grids do not clash
 ax2.grid(False)
 
-# Title, legends, save and show
+# Title saying what the chart shows
 ax.set_title("Honest volume collapses after day 16; fraud continues at the same pace")
+# Key for the bars, top left
 ax.legend(loc="upper left")
+# Key for the line, top right
 ax2.legend(loc="upper right")
+# Keep the daily chart inside its margins
 plt.tight_layout()
+# Save it as figs/volume_over_time.png
 plt.savefig("figs/volume_over_time.png", dpi=150, bbox_inches="tight")
+# Show the daily chart
 plt.show()
 """)
 
 code("""
-# Average transactions per hour, before and after the split hour
+# Rows at or before the split hour
 before_split = df[df["step"] <= SPLIT_STEP]
+# Rows after it
 after_split = df[df["step"] > SPLIT_STEP]
+# Transactions per hour before the split, averaged over the hours
 transactions_per_hour_before = before_split.groupby("step").size().mean()
+# The same average after the split
 transactions_per_hour_after = after_split.groupby("step").size().mean()
 
-# Average frauds per hour, before and after
+# Frauds per hour before the split
 frauds_per_hour_before = before_split.groupby("step")["isFraud"].sum().mean()
+# Frauds per hour after the split
 frauds_per_hour_after = after_split.groupby("step")["isFraud"].sum().mean()
 
+# Print the hourly transactions
 print(f"transactions per hour, hours 1-{SPLIT_STEP}: {transactions_per_hour_before:,.0f}; after: {transactions_per_hour_after:,.0f}")
+# Print the hourly frauds
 print(f"frauds per hour, hours 1-{SPLIT_STEP}: {frauds_per_hour_before:.1f}; after: {frauds_per_hour_after:.1f}")
+# Free the two slices, which only this step needs
 del before_split, after_split
 """)
 
 code("""
 # Check your work
+# Hourly transaction volume before and after the split
 assert round(transactions_per_hour_before) == 12_336 and round(transactions_per_hour_after) == 1_257, "transactions per hour changed"
+# Hourly frauds before and after the split
 assert round(frauds_per_hour_before, 1) == 11.1 and round(frauds_per_hour_after, 1) == 10.9, "frauds per hour changed"
 """)
 
@@ -610,24 +731,34 @@ hour = df.loc[active_types, "step"] % 24
 
 # Share of active rows that are fraud, per hour of day, in percent
 by_hour = is_fraud.groupby(hour).mean() * 100
+# Type and length: one value per hour of day
 print(type(by_hour), by_hour.shape)
+# The first eight hours, rounded
 print(by_hour.round(1).head(8).to_string())
 """)
 
 code("""
-# Line chart of the fraud rate by hour
+# A blank chart for the hourly fraud rate
 fig, ax = plt.subplots(figsize=(10, 4.5))
+# A line with one point per hour
 by_hour.plot(marker="o", color="#c0504d", ax=ax)
+# Title of the hourly chart
 ax.set_title("Share of TRANSFER and CASH_OUT transactions that are fraud, by hour of day")
+# Label the x-axis with the hour
 ax.set_xlabel("Hour of day")
+# Label the y-axis with the fraud rate
 ax.set_ylabel("Fraud rate (%)")
+# Keep the hourly chart inside its margins
 plt.tight_layout()
+# Save it as figs/fraud_rate_by_hour.png
 plt.savefig("figs/fraud_rate_by_hour.png", dpi=150, bbox_inches="tight")
+# Show the hourly chart
 plt.show()
 """)
 
 code("""
 # Check your work
+# More than half of 4 and 5 a.m. transfers are fraud
 assert by_hour.loc[4] > 50 and by_hour.loc[5] > 50, "expected more than half of 4 and 5 a.m. transfers to be fraud"
 """)
 
@@ -653,28 +784,38 @@ fraud_rows = df["isFraud"] == 1
 
 # Share paid to a merchant, by type, in percent
 merchant_share_by_type = (to_merchant.groupby(df["type"]).mean() * 100).round(1)
+# Print the merchant share for each type
 print(merchant_share_by_type.to_string())
+# Print how many frauds went to a merchant
 print("frauds paid to a merchant:", int(to_merchant[fraud_rows].sum()))
 """)
 
 code("""
-# How many distinct senders, and how many appear more than once
+# Number of distinct sender accounts
 distinct_senders = df["nameOrig"].nunique()
+# Senders that appear in more than one transaction
 repeat_senders = int((df["nameOrig"].value_counts() > 1).sum())
 
-# Fraud recipients that also send, and fraud recipients hit more than once
+# Fraud recipients that also appear as a sender
 fraud_recipients_who_send = int(df.loc[fraud_rows, "nameDest"].isin(df["nameOrig"]).sum())
+# Fraud recipients that receive more than one fraud
 repeat_fraud_recipients = int((df.loc[fraud_rows, "nameDest"].value_counts() > 1).sum())
 
+# Print the sender counts
 print(f"distinct senders: {distinct_senders:,} of {len(df):,} transactions; seen more than once: {repeat_senders:,}")
+# Print the fraud recipients that also send
 print(f"fraud recipients that appear as a sender anywhere: {fraud_recipients_who_send} of {n_fraud:,}")
+# Print the fraud recipients hit more than once
 print(f"fraud recipients that receive more than one fraud: {repeat_fraud_recipients}")
 """)
 
 code("""
 # Check your work
+# No fraud goes to a merchant
 assert int(to_merchant[fraud_rows].sum()) == 0, "no fraud should go to a merchant"
+# 9,298 senders appear more than once
 assert repeat_senders == 9_298, f"expected 9,298 repeat senders, got {repeat_senders}"
+# 18 fraud recipients also send; 44 receive more than one fraud
 assert fraud_recipients_who_send == 18 and repeat_fraud_recipients == 44, "fraud recipient counts changed"
 """)
 
@@ -698,12 +839,15 @@ flagged = df["isFlaggedFraud"] == 1
 # Frauds among the flagged
 caught = int((flagged & fraud_rows).sum())
 
+# Print the flagged count and the frauds among them
 print(f"transactions flagged: {int(flagged.sum())}   frauds among them: {caught}")
+# Print the share of all frauds the flag catches
 print(f"recall of the built-in flag: {caught / n_fraud:.2%}")
 """)
 
 code("""
 # Check your work
+# 16 flagged, all 16 fraud
 assert int(flagged.sum()) == 16 and caught == 16, f"expected 16 flagged, 16 fraud; got {int(flagged.sum())}, {caught}"
 """)
 
@@ -734,8 +878,9 @@ recipient_zero_pair = (active["oldBalanceDest"] == 0) & (active["newBalanceDest"
 # The amount equals the sender's whole balance
 whole_balance = active["oldBalanceOrig"] == active["amount"]
 
-# True where the active row is fraud
+# The same fraud flag, for the balance patterns below
 fraud_active = active["isFraud"] == 1
+# Type and size of the active table
 print(type(active), active.shape)
 """)
 
@@ -752,8 +897,11 @@ balance_patterns = pd.DataFrame({
 
 code("""
 # Check your work
+# The patterns as percentages, rounded as printed
 pattern_pct = (balance_patterns * 100).round(2)
+# 97.82% of frauds move the sender's whole balance
 assert pattern_pct.loc["amount equals the sender's whole balance", "fraud"] == 97.82, "whole-balance share for fraud changed"
+# 49.56% of frauds leave the recipient at 0 -> 0
 assert pattern_pct.loc["recipient balance 0 -> 0", "fraud"] == 49.56, "recipient 0 -> 0 share for fraud changed"
 """)
 
@@ -787,13 +935,17 @@ builtin_flag = active["isFlaggedFraud"]
 
 # The inputs: everything except the label, the built-in flag and the account IDs
 features = active.drop(columns=["isFraud", "isFlaggedFraud", "nameOrig", "nameDest"]).copy()
+# Type and size of the input table
 print(type(features), features.shape)
+# Print how many rows and frauds were kept
 print(f"kept {len(active):,} of {len(df):,} transactions, and all {int(target.sum()):,} frauds")
 """)
 
 code("""
 # Check your work
+# Every fraud survives the filter
 assert int(target.sum()) == n_fraud, "filtering removed a fraud"
+# 2,770,409 TRANSFER and CASH_OUT rows
 assert len(features) == 2_770_409, f"expected 2,770,409 rows, got {len(features):,}"
 """)
 
@@ -811,13 +963,17 @@ features["type"] = features["type"].map({"TRANSFER": 0, "CASH_OUT": 1}).astype("
 # Hour of the day, 0 to 23
 features["hour"] = (features["step"] % 24).astype("int8")
 
+# The two new columns are small integers
 print(features[["type", "hour"]].dtypes.to_string())
+# Hour, type and hour of day side by side
 features[["step", "type", "hour"]].head()
 """)
 
 code("""
 # Check your work
+# type holds only 0 and 1
 assert set(features["type"].unique()) == {0, 1}, "type should hold only 0 and 1"
+# hour runs from 0 to 23
 assert features["hour"].between(0, 23).all(), "hour should run from 0 to 23"
 """)
 
@@ -829,6 +985,7 @@ building features.
 code("""
 # Free the memory held by the full table and the active slice
 del df, active
+# Confirm the memory was freed
 print("df and active deleted")
 """)
 
@@ -850,12 +1007,15 @@ features.loc[recipient_zero_pair, ["oldBalanceDest", "newBalanceDest"]] = -1
 # Sender balances 0 -> 0 become NaN
 features.loc[sender_zero_pair, ["oldBalanceOrig", "newBalanceOrig"]] = np.nan
 
+# Print how many balances were marked
 print(f"recipient balances marked -1: {int(recipient_zero_pair.sum()):,}   sender balances set to NaN: {int(sender_zero_pair.sum()):,}")
 """)
 
 code("""
 # Check your work
+# 5,776 recipient pairs marked -1
 assert int(recipient_zero_pair.sum()) == 5_776, f"expected 5,776 recipient markers, got {int(recipient_zero_pair.sum()):,}"
+# 1,308,566 sender pairs set to NaN
 assert int(sender_zero_pair.sum()) == 1_308_566, f"expected 1,308,566 sender NaNs, got {int(sender_zero_pair.sum()):,}"
 """)
 
@@ -884,7 +1044,9 @@ features.loc[[2, 3], ["amount", "errorBalanceOrig", "errorBalanceDest"]]
 
 code("""
 # Check your work
+# Row 2: 181 never arrived
 assert features.loc[2, "errorBalanceDest"] == 181, "row 2: 181 should be missing on the recipient side"
+# Row 3: 21,363 missing on the recipient side
 assert features.loc[3, "errorBalanceDest"] == 21_363, "row 3: 21,182 + 181 should be missing on the recipient side"
 """)
 
@@ -904,13 +1066,16 @@ random honest rows plus every fraud.
 code("""
 # 200,000 random rows plus every fraud
 sample = features.sample(200_000, random_state=SEED).index.union(features.index[target == 1])
+# Type and size of the sample index
 print(type(sample), len(sample))
 """)
 
 code("""
-# Two histograms: the amount, and the recipient error
+# A blank figure with two histogram panels
 fig, axes = plt.subplots(1, 2, figsize=(13, 4.5))
+# For each panel: its axis, the column and the title
 panels = [(axes[0], "amount", "Amount"), (axes[1], "errorBalanceDest", "Recipient balance error")]
+# Draw each panel's honest and fraud histograms
 for panel_ax, panel_col, panel_title in panels:
     # Clip extreme values so the bins stay readable
     values = features.loc[sample, panel_col].clip(lower=-1e6, upper=1e7)
@@ -919,24 +1084,33 @@ for panel_ax, panel_col, panel_title in panels:
     panel_ax.set_title(panel_title)
     panel_ax.set_yscale("log")
     panel_ax.legend()
+# Keep the two histogram panels apart
 plt.tight_layout()
+# Save them as figs/error_feature_distribution.png
 plt.savefig("figs/error_feature_distribution.png", dpi=150, bbox_inches="tight")
+# Show the two histograms
 plt.show()
 """)
 
 code("""
-# Share of rows whose error is exactly zero, for fraud and for honest
+# Share of frauds whose sender error is exactly zero
 sender_exact_fraud = (features.loc[target == 1, "errorBalanceOrig"].abs() < 1e-6).mean()
+# The same share for honest transfers
 sender_exact_honest = (features.loc[target == 0, "errorBalanceOrig"].abs() < 1e-6).mean()
+# Share of frauds whose recipient error is exactly zero
 recipient_exact_fraud = (features.loc[target == 1, "errorBalanceDest"].abs() < 1e-6).mean()
+# The recipient share for honest transfers
 recipient_exact_honest = (features.loc[target == 0, "errorBalanceDest"].abs() < 1e-6).mean()
 
+# Print the sender shares
 print(f"sender error exactly 0:    fraud {sender_exact_fraud:.1%}, honest {sender_exact_honest:.1%}")
+# Print the recipient shares
 print(f"recipient error exactly 0: fraud {recipient_exact_fraud:.1%}, honest {recipient_exact_honest:.1%}")
 """)
 
 code("""
 # Check your work
+# 99.5% of frauds and 9.2% of honest transfers have an exact sender side
 assert round(sender_exact_fraud * 100, 1) == 99.5 and round(sender_exact_honest * 100, 1) == 9.2, "sender exact-zero shares changed"
 """)
 
@@ -949,28 +1123,36 @@ a fraud, and Step 2.4 shows a two-question tree finding exactly that.
 ### Step 1.25: Compare the balance fingerprints of fraud and honest transfers
 
 **Concept: correlation.** A correlation runs from -1 to 1 and says how closely two columns move together. In an
-honest transfer the amount should move with the balances in a fixed way; fraud breaks that.
+honest transfer the amount should match the balance change on both sides; in PaySim, fraud breaks that on the
+recipient's side.
 """)
 
 code("""
 # The balance block: the amount, the four balances and the two errors
 block = ["amount", "oldBalanceOrig", "newBalanceOrig", "oldBalanceDest", "newBalanceDest", "errorBalanceOrig", "errorBalanceDest"]
 
-# Correlation tables for honest and for fraud transfers
+# Correlation table for honest transfers
 honest_corr = features.loc[target == 0, block].corr()
+# Correlation table for frauds
 fraud_corr = features.loc[target == 1, block].corr()
+# Type and size of one table
 print(type(honest_corr), honest_corr.shape)
 """)
 
 code("""
-# Two heatmaps side by side
+# A blank figure with two heatmap panels
 fig, axes = plt.subplots(1, 2, figsize=(14, 5.5))
+# Pair each panel with its label and table
 heatmaps = [(axes[0], "honest", honest_corr), (axes[1], "fraud", fraud_corr)]
+# Draw one annotated heatmap per panel
 for heat_ax, heat_label, heat_table in heatmaps:
     sns.heatmap(heat_table, vmin=-1, vmax=1, cmap="RdBu_r", annot=True, fmt=".2f", square=True, cbar=False, ax=heat_ax)
     heat_ax.set_title(f"Correlation of balance fields, {heat_label} transactions")
+# Keep the two heatmaps apart
 plt.tight_layout()
+# Save them as figs/balance_fingerprint.png, the chart the README shows
 plt.savefig("figs/balance_fingerprint.png", dpi=150, bbox_inches="tight")
+# Show the two heatmaps
 plt.show()
 """)
 
@@ -980,13 +1162,24 @@ fingerprint = pd.DataFrame({
     "honest": honest_corr.loc["amount", ["errorBalanceOrig", "newBalanceDest", "oldBalanceOrig", "errorBalanceDest"]],
     "fraud": fraud_corr.loc["amount", ["errorBalanceOrig", "newBalanceDest", "oldBalanceOrig", "errorBalanceDest"]],
 })
+# Show the four, rounded as quoted
 fingerprint.round(2)
+""")
+
+code("""
+# Check your work
+# Honest transfers: the sender error moves with the amount (0.99)
+assert round(fingerprint.loc["errorBalanceOrig", "honest"], 2) == 0.99, "honest amount-to-sender-error correlation changed"
+# Frauds: it barely does (0.09)
+assert round(fingerprint.loc["errorBalanceOrig", "fraud"], 2) == 0.09, "fraud amount-to-sender-error correlation changed"
+# Frauds: the amount moves with the sender's old balance (0.86) and the recipient error (0.65)
+assert round(fingerprint.loc["oldBalanceOrig", "fraud"], 2) == 0.86 and round(fingerprint.loc["errorBalanceDest", "fraud"], 2) == 0.65, "fraud fingerprint changed"
 """)
 
 md("""
 Read the `amount` row of each heatmap (printed above). In honest transfers the sender error moves almost exactly
 with the amount (0.99), because so many honest sender balances are unrecorded; in fraud it barely does (0.09),
-because the sender side balances. In fraud the amount moves with the sender's old balance (0.86), because a fraud
+because fraud debits the sender exactly. In fraud the amount moves with the sender's old balance (0.86), because a fraud
 takes what the account holds, and with the recipient error (0.65), because what was taken does not arrive.
 
 ### Step 1.26: Fix the model inputs and run the leakage guard
@@ -1003,24 +1196,30 @@ code("""
 # Columns that must never be model inputs
 LEAKY_COLUMNS = ["isFraud", "isFlaggedFraud", "nameOrig", "nameDest", "step"]
 
-# Every feature column except step
+# An empty list for the model inputs
 MODEL_COLS = []
+# Add every column except step
 for column in features.columns:
     if column != "step":
         MODEL_COLS.append(column)
 
-# Collect any leaky column that slipped in
+# An empty list for any leaky column
 leaked = []
+# Collect any input that is on the leaky list
 for column in MODEL_COLS:
     if column in LEAKY_COLUMNS:
         leaked.append(column)
+# Print the inputs
 print("model inputs:", MODEL_COLS)
+# Print any leaked column (none expected)
 print("leaked columns:", leaked)
 """)
 
 code("""
 # Check your work
+# No leaky column reached the inputs
 assert not leaked, f"leaked columns reached the model inputs: {leaked}"
+# Nine inputs
 assert len(MODEL_COLS) == 9, f"expected 9 model inputs, got {len(MODEL_COLS)}"
 """)
 
@@ -1050,15 +1249,21 @@ X_train, y_train = features.loc[train_mask, MODEL_COLS], target[train_mask]
 # Test inputs and labels
 X_test, y_test = features.loc[~train_mask, MODEL_COLS], target[~train_mask]
 
+# Types and sizes of the two input tables
 print(type(X_train), X_train.shape, X_test.shape)
+# Print the training rows, fraud rate and frauds
 print(f"training: {len(X_train):>9,} transactions, fraud rate {y_train.mean():.2%}, {int(y_train.sum()):,} frauds")
+# Print the same for the test window
 print(f"test:     {len(X_test):>9,} transactions, fraud rate {y_test.mean():.2%}, {int(y_test.sum()):,} frauds")
 """)
 
 code("""
 # Check your work
+# Every training row comes before every test row
 assert features.loc[train_mask, "step"].max() < features.loc[~train_mask, "step"].min(), "a training row is later than a test row"
+# No row is lost
 assert len(X_train) + len(X_test) == len(features), "rows were lost in the split"
+# The test window holds 132,136 rows and 2,754 frauds
 assert len(X_test) == 132_136 and int(y_test.sum()) == 2_754, "the test window should hold 132,136 rows and 2,754 frauds"
 """)
 
@@ -1096,6 +1301,7 @@ code("""
 results = {}
 
 
+# A function that scores one model and stores the result under its name
 def score_model(name, scores):
     # Precision and recall at every possible cut-off
     precision, recall, _ = precision_recall_curve(y_test, scores)
@@ -1113,7 +1319,16 @@ def score_model(name, scores):
     print(f"{name:34s} PR-AUC {results[name]['PR-AUC']:.4f}   recall at 99% precision {recall_at_99:.4f}")
 
 
+# Confirm the function exists and nothing is scored yet
 print(type(score_model), "| models scored so far:", len(results))
+""")
+
+code("""
+# Check your work
+# The function exists
+assert callable(score_model), "score_model is not defined"
+# Nothing is on the scoreboard yet
+assert len(results) == 0, f"expected an empty scoreboard, got {len(results)} entries"
 """)
 
 md("""
@@ -1129,14 +1344,16 @@ building if it beats the baseline by a margin that matters.
 code("""
 # 1 for a TRANSFER (type 0) above 200,000, else 0
 rule = ((X_test["type"] == 0) & (X_test["amount"] > 200_000)).astype(int)
+# Type and size of the rule's flags, and how many it flags
 print(type(rule), rule.shape, "| flagged:", int(rule.sum()))
 
-# Score it
+# Score the rule's flags as the first entry on the scoreboard
 score_model("Baseline (200,000 TRANSFER rule)", rule)
 """)
 
 code("""
 # Check your work
+# The rule's PR-AUC is 0.0283
 assert round(results["Baseline (200,000 TRANSFER rule)"]["PR-AUC"], 4) == 0.0283, "baseline PR-AUC changed"
 """)
 
@@ -1154,6 +1371,7 @@ Step 1.13.
 """)
 
 code("""
+# The decision tree, and a function that prints its rules
 from sklearn.tree import DecisionTreeClassifier, export_text
 
 # The two inputs the tree may use
@@ -1164,21 +1382,37 @@ tree = DecisionTreeClassifier(max_depth=2, class_weight="balanced", random_state
 
 # Fit it; the tree cannot take NaN, so unknown sender errors are treated as 0
 tree.fit(X_train[tree_cols].fillna(0), y_train)
+# Type, depth and number of leaves
 print(type(tree), "| depth:", tree.get_depth(), "| leaves:", tree.get_n_leaves())
 """)
 
 code("""
 # Check your work
+# Depth 2: two questions
 assert tree.get_depth() == 2, "the tree should have depth 2"
 """)
 
 md("""
 ### Step 2.4: Read the tree's rules
+
+Print the tree as if-then rules and compare them with the ledger reasoning of Step 1.9.
+
+**Concept: a readable model.** A depth-2 tree is a short set of rules a fraud analyst can check by hand.
 """)
 
 code("""
-# Print the rules as text
-print(export_text(tree, feature_names=tree_cols))
+# The tree's rules as text
+tree_rules = export_text(tree, feature_names=tree_cols)
+# Print them
+print(tree_rules)
+""")
+
+code("""
+# Check your work
+# The tree splits on the recipient error at 61.52
+assert "errorBalanceDest >  61.52" in tree_rules, "the recipient-error split changed"
+# and on the sender error at 0.01
+assert "errorBalanceOrig <= 0.01" in tree_rules, "the sender-error split changed"
 """)
 
 md("""
@@ -1193,6 +1427,7 @@ honest, honest flagged as fraud (false alarms), fraud missed, and fraud caught.
 """)
 
 code("""
+# A function that draws the confusion matrix and prints recall and precision
 def show_confusion(truth, flags, title):
     # Count the four combinations of truth and prediction
     cm = confusion_matrix(truth, flags)
@@ -1210,13 +1445,17 @@ def show_confusion(truth, flags, title):
 
 # The tree's flags on the test window
 tree_flags = tree.predict(X_test[tree_cols].fillna(0))
+# Draw the tree's matrix and keep the counts
 tree_cm = show_confusion(y_test, tree_flags, "Two-question tree, test window")
+# Type and size of the counts
 print(type(tree_cm), tree_cm.shape)
 """)
 
 code("""
 # Check your work
+# 1,367 frauds caught
 assert tree_cm[1, 1] == 1_367, f"expected the tree to catch 1,367 frauds, got {tree_cm[1, 1]:,}"
+# 79 false alarms
 assert tree_cm[0, 1] == 79, f"expected 79 false alarms, got {tree_cm[0, 1]}"
 """)
 
@@ -1225,19 +1464,26 @@ Two questions catch 49.6% of the test fraud (1,367 of 2,754) with 94.5% precisio
 already far beyond the built-in flag. The frauds it misses need more than two questions.
 
 ### Step 2.6: Score the tree with the same function as every other model
+
+Turn the tree's leaves into probabilities and put them through `score_model`.
+
+**Concept: one yardstick.** Every model is scored by the same function on the same test rows, which is what makes
+the scoreboard in Step 2.19 fair.
 """)
 
 code("""
 # The tree's probability of fraud for each test row
 tree_scores = tree.predict_proba(X_test[tree_cols].fillna(0))[:, 1]
+# Type and length of the tree's scores
 print(type(tree_scores), tree_scores.shape)
 
-# Score it
+# Put the tree on the scoreboard
 score_model("Two-question tree", tree_scores)
 """)
 
 code("""
 # Check your work
+# The tree's PR-AUC is 0.4892
 assert round(results["Two-question tree"]["PR-AUC"], 4) == 0.4892, "tree PR-AUC changed"
 """)
 
@@ -1260,12 +1506,15 @@ labels would leak the answer into the model.
 code("""
 # Honest training rows divided by fraud training rows
 class_weight = (y_train == 0).sum() / (y_train == 1).sum()
+# The weight is a single number
 print(type(class_weight))
+# Print the honest rows per fraud
 print(f"honest transactions per fraud in training: {class_weight:.1f}")
 """)
 
 code("""
 # Check your work
+# 482.3 honest rows per fraud
 assert round(class_weight, 1) == 482.3, f"expected 482.3, got {class_weight:.1f}"
 """)
 
@@ -1279,25 +1528,31 @@ words, and read the error.
 """)
 
 code("""
+# XGBoost's scikit-learn style classifier
 from xgboost import XGBClassifier
 
 # 1,000 training rows with type written as text again
 text_rows = X_train.head(1_000).copy()
+# Write the type back as words
 text_rows["type"] = text_rows["type"].map({0: "TRANSFER", 1: "CASH_OUT"})
+# Confirm the column now holds text
 print(text_rows["type"].dtype)
 
-# Try to fit, and print the error instead of stopping the notebook
+# Try to fit, and keep the error message instead of stopping the notebook
 try:
     XGBClassifier(n_estimators=2, n_jobs=N_JOBS).fit(text_rows, y_train.head(1_000))
     text_column_error = None
 except (ValueError, TypeError) as error:
     text_column_error = str(error)
+# Print the start of the error message
 print(str(text_column_error)[:300])
 """)
 
 code("""
 # Check your work
+# Fitting on text raised an error
 assert text_column_error is not None, "fitting on a text column should raise an error"
+# Free the text copy
 del text_rows
 """)
 
@@ -1308,6 +1563,9 @@ made: map the type to 0 and 1.
 ### Step 2.9: Train XGBoost
 
 Shallow trees (depth 3), library defaults otherwise, and the class weight from Step 2.7.
+
+**Concept: gradient boosting.** Each new tree is fitted to the mistakes the trees before it still make, so the
+model improves in many small steps.
 """)
 
 code("""
@@ -1316,24 +1574,38 @@ model = XGBClassifier(max_depth=3, scale_pos_weight=class_weight, n_jobs=N_JOBS)
 
 # Fit it on the training window
 model.fit(X_train, y_train)
+# Type and number of trees
 print(type(model), "| trees:", model.get_booster().num_boosted_rounds())
+""")
+
+code("""
+# Check your work
+# XGBoost's default of 100 trees
+assert model.get_booster().num_boosted_rounds() == 100, "expected 100 trees"
 """)
 
 md("""
 ### Step 2.10: Score XGBoost on the test window
+
+Score the test rows and put XGBoost on the scoreboard.
+
+**Concept: scoring on unseen rows.** The test window was never used in training, so its PR-AUC estimates how the
+model does on later transactions of the same simulator.
 """)
 
 code("""
 # The model's fraud score for each test row
 xgb_scores = model.predict_proba(X_test)[:, 1]
+# Type and length of XGBoost's scores
 print(type(xgb_scores), xgb_scores.shape)
 
-# Score it
+# Put XGBoost on the scoreboard
 score_model("XGBoost, class-weighted", xgb_scores)
 """)
 
 code("""
 # Check your work
+# XGBoost's PR-AUC is 0.9989
 assert round(results["XGBoost, class-weighted"]["PR-AUC"], 4) == 0.9989, "XGBoost PR-AUC changed"
 """)
 
@@ -1348,9 +1620,11 @@ still means many false alarms. The ROC curve hides that; the precision-recall cu
 """)
 
 code("""
-# Two panels: precision-recall on the left, ROC on the right
+# A blank figure: precision-recall on the left, ROC on the right
 fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+# The two models to draw, each with its scores and colour
 curves = [("Two-question tree", tree_scores, "#7f8c8d"), ("XGBoost", xgb_scores, "#2e5c8a")]
+# Draw each model's precision-recall and ROC curves
 for curve_name, curve_scores, curve_color in curves:
     # Precision-recall curve
     curve_precision, curve_recall, _ = precision_recall_curve(y_test, curve_scores)
@@ -1360,20 +1634,38 @@ for curve_name, curve_scores, curve_color in curves:
     fpr, tpr, _ = roc_curve(y_test, curve_scores)
     axes[1].plot(fpr, tpr, color=curve_color, lw=2, label=f"{curve_name} (ROC-AUC {roc_auc_score(y_test, curve_scores):.3f})")
 
-# Reference lines for random guessing, labels and legends
+# Random guessing on the PR chart: a flat line at the fraud rate
 axes[0].axhline(y_test.mean(), color="#a0aec0", ls="--", lw=1, label=f"random ({y_test.mean():.3f})")
+# Label the PR chart's x-axis
 axes[0].set_xlabel("Recall (share of frauds caught)")
+# Label the PR chart's y-axis
 axes[0].set_ylabel("Precision (share of alarms that are fraud)")
+# Title of the PR chart
 axes[0].set_title("Precision-recall curve, test window")
+# Key for the PR chart
 axes[0].legend(loc="lower left")
+# Random guessing on the ROC chart: the diagonal
 axes[1].plot([0, 1], [0, 1], color="#a0aec0", ls="--", lw=1, label="random")
+# Label the ROC chart's x-axis
 axes[1].set_xlabel("False-alarm rate (share of honest transactions flagged)")
+# Label the ROC chart's y-axis
 axes[1].set_ylabel("Recall")
+# Title of the ROC chart
 axes[1].set_title("ROC curve, test window")
+# Key for the ROC chart
 axes[1].legend(loc="lower right")
+# Keep the two curve panels apart
 plt.tight_layout()
+# Save them as figs/pr_roc_curves.png
 plt.savefig("figs/pr_roc_curves.png", dpi=150, bbox_inches="tight")
+# Show the curves
 plt.show()
+""")
+
+code("""
+# Check your work
+# The curves were saved
+assert os.path.isfile("figs/pr_roc_curves.png"), "figs/pr_roc_curves.png was not written"
 """)
 
 md("""
@@ -1399,17 +1691,25 @@ eligible = precision[:-1] >= 0.99
 
 # Among those, the one with the highest recall
 best = int(eligible.nonzero()[0][recall[:-1][eligible].argmax()])
+# The cut-off at that position
 operating_threshold = float(thresholds[best])
+# Print the cut-off with its precision and recall
 print(f"cut-off: {operating_threshold:.4f}   precision {precision[best]:.4f}   recall {recall[best]:.4f}")
 """)
 
 code("""
 # Check your work
+# The cut-off is 0.3602
 assert round(operating_threshold, 4) == 0.3602, f"expected a cut-off of 0.3602, got {operating_threshold:.4f}"
 """)
 
 md("""
 ### Step 2.13: Count hits and misses at that cut-off
+
+Flag every test row at or above the cut-off and count the four outcomes.
+
+**Concept: false alarms as a count.** Precision is a ratio; the number of honest customers frozen is the work the
+fraud team actually has to handle.
 """)
 
 code("""
@@ -1418,11 +1718,13 @@ flags = (xgb_scores >= operating_threshold).astype(int)
 
 # Confusion matrix at the cut-off
 cm = show_confusion(y_test, flags, f"XGBoost at the 99%-precision cut-off ({operating_threshold:.2f})")
+# Type of the counts, and the four counts in a row
 print(type(cm), cm.ravel())
 """)
 
 code("""
 # Check your work
+# 3 missed and 27 false alarms
 assert cm[1, 0] == 3 and cm[0, 1] == 27, f"expected 3 missed and 27 false alarms, got {cm[1, 0]} and {cm[0, 1]}"
 """)
 
@@ -1431,8 +1733,9 @@ At this cut-off the model misses 3 frauds and raises 27 false alarms among the 1
 
 ### Step 2.14: Find the cheapest cut-off at a 10-to-1 cost
 
-A second policy weighs the two mistakes directly. Suppose a missed fraud costs 10 times as much as a false
-alarm (`COST_RATIO`). Try 99 cut-offs and keep the cheapest.
+A second policy weighs the two mistakes directly. Price a missed fraud at 10 units (the money is lost) and a false
+alarm at 1 unit (a review and a customer locked out of their money), so `COST_RATIO = 10`. These prices are an
+assumption made for teaching, not costs measured at any operator. Try 99 cut-offs and keep the cheapest.
 
 **Concept: cost-sensitive threshold.** Cost = 10 x missed frauds + false alarms. The cheapest cut-off depends on
 the ratio, and the ratio is a business input, not something the data can tell you.
@@ -1442,48 +1745,69 @@ code("""
 # 99 cut-offs from 0.01 to 0.99
 cutoffs = np.linspace(0.01, 0.99, 99)
 
-# Missed frauds and false alarms at each cut-off
+# An empty list for the missed frauds at each cut-off
 missed_list = []
+# An empty list for the false alarms
 false_alarm_list = []
+# Count both at each cut-off
 for cutoff in cutoffs:
     missed_list.append(int(((xgb_scores < cutoff) & (y_test == 1)).sum()))
     false_alarm_list.append(int(((xgb_scores >= cutoff) & (y_test == 0)).sum()))
+# The missed counts as an array
 missed = np.array(missed_list)
+# The false-alarm counts as an array
 false_alarms = np.array(false_alarm_list)
+# Type and lengths of the two arrays
 print(type(missed), missed.shape, false_alarms.shape)
 """)
 
 code("""
-# Cost of each cut-off, and the position of the cheapest
+# Cost of each cut-off: COST_RATIO units per missed fraud, 1 unit per false alarm
 cost = COST_RATIO * missed + false_alarms
+# Position of the cheapest
 cheapest = int(cost.argmin())
+# Print the cheapest cut-off and its counts
 print(f"cheapest cut-off {cutoffs[cheapest]:.2f}: {missed[cheapest]} missed, {false_alarms[cheapest]} false alarms")
 """)
 
 code("""
 # Check your work
+# The cheapest cut-off is 0.96
 assert round(cutoffs[cheapest], 2) == 0.96, f"expected 0.96, got {cutoffs[cheapest]:.2f}"
+# It misses 3 and raises 2 false alarms
 assert missed[cheapest] == 3 and false_alarms[cheapest] == 2, "the cheapest cut-off's counts changed"
 """)
 
 code("""
-# Cost against cut-off, with both policies marked
+# A blank chart for the cost curve
 fig, ax = plt.subplots(figsize=(10, 4.5))
+# The cost at each cut-off
 ax.plot(cutoffs, cost, color="#2e5c8a")
+# A dashed line at the cheapest cut-off
 ax.axvline(cutoffs[cheapest], color="#c0504d", linestyle="--", label=f"cheapest cut-off {cutoffs[cheapest]:.2f}")
+# A dotted line at the 99%-precision cut-off
 ax.axvline(operating_threshold, color="gray", linestyle=":", label=f"99%-precision cut-off {operating_threshold:.2f}")
+# Label the cost chart's x-axis
 ax.set_xlabel("Cut-off")
+# Label its y-axis with the cost formula
 ax.set_ylabel(f"Cost = {COST_RATIO} x missed + false alarms")
+# Title of the cost chart
 ax.set_title("Cost of each cut-off on the test window")
+# Key for the two lines
 ax.legend()
+# Keep the cost chart inside its margins
 plt.tight_layout()
+# Save it as figs/cost_curve.png
 plt.savefig("figs/cost_curve.png", dpi=150, bbox_inches="tight")
+# Show the cost curve
 plt.show()
 """)
 
 md("""
 The two policies pick different cut-offs, 0.36 and 0.96, and neither is "correct": the cost ratio has to come
-from the business that will run the model. (The shipped pipeline assumes 100 to 1.)
+from the business that will run the model. (The shipped pipeline prices a missed fraud at 1,000 units and a false
+alarm at 10, `COST_PER_MISSED_FRAUD` and `COST_PER_FALSE_ALARM` in `src/features.py`: also an assumption, a ratio
+of 100 to 1.)
 
 > **Try it:** set `COST_RATIO = 100` in Step 1.2, re-run it and Step 2.14. Where does the cheapest cut-off move,
 > and why?
@@ -1499,28 +1823,36 @@ honest transactions it meets per fraud, so a rarer fraud mix means lower precisi
 """)
 
 code("""
-# The model's two rates on the test window
+# Share of test frauds caught at the 99%-precision cut-off
 catch_rate = cm[1, 1] / cm[1].sum()
+# Share of honest test transactions wrongly flagged
 false_alarm_rate = cm[0, 1] / cm[0].sum()
 
 # TRANSFER and CASH_OUT fraud rate over the whole month
 real_fraud_rate = target.mean()
+# Print the two rates and the real fraud rate
 print(f"catch rate {catch_rate:.4f}, false-alarm rate {false_alarm_rate:.6f}, real fraud rate {real_fraud_rate:.4%}")
 """)
 
 code("""
-# Apply both rates to a million screened transactions at the real fraud rate
+# Frauds in a million transactions at the real fraud rate
 frauds_per_million = 1_000_000 * real_fraud_rate
+# Frauds caught among them
 caught_per_million = catch_rate * frauds_per_million
+# False alarms among the honest ones
 false_alarms_per_million = false_alarm_rate * (1_000_000 - frauds_per_million)
+# Precision at that mix
 precision_at_real_rate = caught_per_million / (caught_per_million + false_alarms_per_million)
 
+# Print the counts per million
 print(f"per million transactions: {frauds_per_million:,.0f} frauds, {caught_per_million:,.0f} caught, {false_alarms_per_million:,.0f} false alarms")
+# Print the precision, beside the test-window figure
 print(f"precision at the real fraud rate: {precision_at_real_rate:.1%}  (on the test window: {precision[best]:.1%})")
 """)
 
 code("""
 # Check your work
+# 93.4% precision at the real fraud rate
 assert round(precision_at_real_rate * 100, 1) == 93.4, f"expected 93.4%, got {precision_at_real_rate:.1%}"
 """)
 
@@ -1540,9 +1872,13 @@ with 1 (a value that cannot be confused with a real balance or with the -1 marke
 """)
 
 code("""
+# Fill-in for missing values
 from sklearn.impute import SimpleImputer
+# Logistic regression
 from sklearn.linear_model import LogisticRegression
+# Chains the steps into one model
 from sklearn.pipeline import Pipeline
+# Rescales each input to mean 0 and spread 1
 from sklearn.preprocessing import StandardScaler
 
 # Fill missing values with 1, rescale, then fit a class-weighted logistic regression
@@ -1551,17 +1887,20 @@ logistic = Pipeline([
     ("scale", StandardScaler()),
     ("model", LogisticRegression(max_iter=1000, class_weight="balanced", random_state=SEED)),
 ])
+# Type and the names of the three steps
 print(type(logistic), list(logistic.named_steps))
 """)
 
 code("""
-# Fit on the training window and score on the test window
+# Fit the logistic regression on the training window
 logistic.fit(X_train, y_train)
+# Put it on the scoreboard, scored on the test window
 score_model("Logistic regression", logistic.predict_proba(X_test)[:, 1])
 """)
 
 code("""
 # Check your work
+# Logistic regression's PR-AUC is 0.7901
 assert round(results["Logistic regression"]["PR-AUC"], 4) == 0.7901, "logistic regression PR-AUC changed"
 """)
 
@@ -1573,19 +1912,22 @@ voting together.
 """)
 
 code("""
+# The random forest model
 from sklearn.ensemble import RandomForestClassifier
 
 # 200 trees, at most 16 levels deep, at least 20 rows per leaf
 forest = RandomForestClassifier(n_estimators=200, max_depth=16, min_samples_leaf=20,
                                 class_weight="balanced_subsample", n_jobs=RF_JOBS, random_state=SEED)
 
-# Fit and score
+# Fit the forest on the training window
 forest.fit(X_train, y_train)
+# Score the forest's test-window probabilities
 score_model("Random forest", forest.predict_proba(X_test)[:, 1])
 """)
 
 code("""
 # Check your work
+# The forest's PR-AUC rounds to 1.0
 assert round(results["Random forest"]["PR-AUC"], 4) == 1.0, "random forest PR-AUC changed"
 """)
 
@@ -1597,19 +1939,22 @@ it gets the same class weight, larger trees and very small leaves (`min_child_sa
 """)
 
 code("""
+# The LightGBM model
 from lightgbm import LGBMClassifier
 
 # 400 trees of up to 31 leaves, at least 5 rows per leaf
 lgbm = LGBMClassifier(n_estimators=400, num_leaves=31, learning_rate=0.05, min_child_samples=5,
                       scale_pos_weight=class_weight, n_jobs=N_JOBS, random_state=SEED, verbose=-1)
 
-# Fit and score
+# Fit LightGBM on the training window
 lgbm.fit(X_train, y_train)
+# Score LightGBM's test-window probabilities
 score_model("LightGBM", lgbm.predict_proba(X_test)[:, 1])
 """)
 
 code("""
 # Check your work
+# LightGBM's PR-AUC is 0.0338
 assert round(results["LightGBM"]["PR-AUC"], 4) == 0.0338, "LightGBM PR-AUC changed"
 """)
 
@@ -1623,7 +1968,9 @@ the same function.
 code("""
 # One row per model, sorted by PR-AUC
 scoreboard = pd.DataFrame(results).T.sort_values("PR-AUC", ascending=False)
+# Type and size of the scoreboard
 print(type(scoreboard), scoreboard.shape)
+# Print it with four decimals
 print(scoreboard.to_string(float_format="{:.4f}".format))
 """)
 
@@ -1631,30 +1978,41 @@ code("""
 # PR-AUC from lowest to highest, for the chart
 pr_auc_sorted = scoreboard["PR-AUC"].sort_values()
 
-# Red for models below 0.5 PR-AUC, blue for the rest
+# An empty list of bar colours
 bar_colours = []
+# Red for a model below 0.5 PR-AUC, blue for the rest
 for value in pr_auc_sorted:
     if value < 0.5:
         bar_colours.append("#c0504d")
     else:
         bar_colours.append("#2e5c8a")
 
-# Horizontal bars with the value printed beside each
+# A blank chart for the scoreboard
 fig, ax = plt.subplots(figsize=(9, 4.5))
+# One horizontal bar per model
 pr_auc_sorted.plot(kind="barh", ax=ax, color=bar_colours)
+# Label the x-axis, with the random-guess level
 ax.set_xlabel("PR-AUC on the test window (random guessing scores about 0.02)")
+# Title of the scoreboard chart
 ax.set_title("Model comparison on the test window")
+# Room on the right for the value labels
 ax.set_xlim(0, 1.05)
+# Write each model's PR-AUC beside its bar
 for bar_position, bar_value in enumerate(pr_auc_sorted):
     ax.text(bar_value + 0.01, bar_position, f"{bar_value:.4f}", va="center", fontsize=9)
+# Keep the scoreboard chart inside its margins
 plt.tight_layout()
+# Save it as figs/model_comparison.png
 plt.savefig("figs/model_comparison.png", dpi=150, bbox_inches="tight")
+# Show the scoreboard chart
 plt.show()
 """)
 
 code("""
 # Check your work
+# The random forest ranks first
 assert scoreboard.index[0] == "Random forest", "the random forest should rank first"
+# Six models so far
 assert len(scoreboard) == 6, f"expected 6 models on the scoreboard, got {len(scoreboard)}"
 """)
 
@@ -1666,15 +2024,16 @@ Three lessons are in this table.
    from them almost exactly. On a simulator, the scores show that the method works; they do not tell you how
    accurate a model would be on a real network.
 2. **Models can fail quietly.** LightGBM falls to 0.0338, about the same as the 200,000 rule (0.0283), without any
-   error message. The test window has ten times the fraud rate of training (Step 1.27); a model fitted too
-   tightly to the training window can break on a shift like that. Always score on later data before trusting a
-   model.
+   error message. This notebook does not test why; its settings (a class weight of 482 with leaves as small as 5
+   rows) are the first thing to check. The point is that nothing warned: only scoring on later data showed it.
+   Always do that before trusting a model.
 3. **A linear model is not enough here.** Logistic regression reaches 0.7901 but keeps 99% precision only while
    catching 45% of the fraud, most likely because the fraud pattern ("this error is zero *and* that one is
    not") is a combination a linear model cannot express directly.
 
-XGBoost stays the model for the rest of the notebook: it is within 0.0011 of the forest, a single model that
-SHAP can explain quickly, and its score is less likely to be an artefact of the simulator.
+XGBoost stays the model for the rest of the notebook: it is within 0.0011 of the forest, and SHAP explains a
+single boosted model quickly. On a simulator this separable, the gap between the two says nothing about which
+would do better on real data.
 
 ## 2C. Evaluate
 
@@ -1691,8 +2050,9 @@ code("""
 # The hour of each test row
 test_steps = features.loc[~train_mask, "step"].to_numpy()
 
-# One row of measures per period
+# An empty list, one row of measures per period
 period_rows = []
+# Score each of the four test periods
 for start, end in [(491, 560), (561, 630), (631, 700), (701, 743)]:
     # Rows in this period, their labels and their scores
     in_period = (test_steps >= start) & (test_steps <= end)
@@ -1707,37 +2067,63 @@ for start, end in [(491, 560), (561, 630), (631, 700), (701, 743)]:
                         "PR-AUC": average_precision_score(truth, scores),
                         "precision": true_positives / max(flagged_period.sum(), 1),
                         "recall": true_positives / truth.sum()})
+# Type and number of periods scored
 print(type(period_rows), len(period_rows))
 """)
 
 code("""
 # Turn the rows into a table, one row per period
 periods = pd.DataFrame(period_rows).set_index("hours")
+# Print the period table with four decimals
 print(periods.to_string(float_format="{:.4f}".format))
 """)
 
 code("""
 # Check your work
+# The four periods cover the whole test window
 assert periods["transactions"].sum() == len(X_test), "the four periods should cover the whole test window"
+# Recall stays above 99% in every period
 assert periods["recall"].min() > 0.99, "recall fell below 99% in a period"
 """)
 
 md("""
 ### Step 2.21: Plot the three measures by period
+
+Draw the period table as three lines.
+
+**Concept: a fixed cut-off over time.** In use the cut-off does not move every week, so precision and recall at one
+fixed cut-off show what customers and the fraud team would see.
 """)
 
 code("""
-# One line per measure across the four periods
+# A blank chart for the three measures
 fig, ax = plt.subplots(figsize=(9, 4.5))
+# One line per measure across the periods
 periods[["PR-AUC", "precision", "recall"]].plot(marker="o", ax=ax)
+# Zoom the y-axis on the top of the scale
 ax.set_ylim(0.95, 1.005)
+# Label the x-axis with the period
 ax.set_xlabel("Test period (simulated hours)")
+# Label the y-axis
 ax.set_ylabel("Score")
+# Title naming the fixed cut-off
 ax.set_title(f"XGBoost by test period, cut-off fixed at {operating_threshold:.2f}")
+# Key for the three lines
 ax.legend(loc="lower left")
+# Keep the period chart inside its margins
 plt.tight_layout()
+# Save it as figs/performance_over_time.png
 plt.savefig("figs/performance_over_time.png", dpi=150, bbox_inches="tight")
+# Show the period chart
 plt.show()
+""")
+
+code("""
+# Check your work
+# The period chart was saved
+assert os.path.isfile("figs/performance_over_time.png"), "figs/performance_over_time.png was not written"
+# Precision at the fixed cut-off stays at 98.58% or more
+assert round(periods["precision"].min() * 100, 2) == 98.58, f"lowest period precision changed: {periods['precision'].min():.4%}"
 """)
 
 md("""
@@ -1745,7 +2131,10 @@ Ranking (PR-AUC) and recall stay close to perfect in every period, and precision
 the fixed cut-off, even though the mix shifts sharply: the last period has 5,217 transactions against 50,526 in
 the first, and 490 of them are fraud. On real data this check would run every week, and a fall in precision or
 recall would trigger a review of the cut-off or a retrain. The shipped pipeline does a stricter version
-(`src/validate.py` retrains on expanding windows; `src/monitoring.py` tracks how the inputs drift).
+(`src/validate.py` retrains on four expanding windows and tests each on the hours after it, which is called
+walk-forward validation; `src/monitoring.py` tracks how the inputs drift with the Population Stability Index,
+PSI, which compares how a feature's values spread across bins in a new window with the training window: below
+0.10 is read as stable, 0.25 or more as a shift to investigate).
 
 ### Step 2.22: Fill the missing values for resampling
 
@@ -1760,23 +2149,40 @@ how much each row counts (the class weight).
 code("""
 # Fill NaN with -1 in copies of the training and test inputs
 X_train_filled, X_test_filled = X_train.fillna(-1), X_test.fillna(-1)
+# Type, size and NaN left in the filled training copy
 print(type(X_train_filled), X_train_filled.shape, "| NaN left:", int(X_train_filled.isna().sum().sum()))
+""")
+
+code("""
+# Check your work
+# No NaN left in the training copy
+assert int(X_train_filled.isna().sum().sum()) == 0, "the training copy still has NaN"
+# Nor in the test copy
+assert int(X_test_filled.isna().sum().sum()) == 0, "the test copy still has NaN"
 """)
 
 md("""
 ### Step 2.23: Create the synthetic frauds
+
+Resample the training rows until the classes are equal.
+
+**Concept: how SMOTE makes a row.** For each fraud it picks one of its five nearest fraud neighbours and creates a
+new row at a random point on the line between them.
 """)
 
 code("""
+# SMOTE, from the imbalanced-learn library
 from imblearn.over_sampling import SMOTE
 
 # Add synthetic frauds until there are as many frauds as honest rows
 X_smote, y_smote = SMOTE(random_state=SEED, k_neighbors=5).fit_resample(X_train_filled, y_train)
+# Print the rows and frauds before and after
 print(f"training rows: {len(X_train_filled):,} -> {len(X_smote):,}; frauds: {int(y_train.sum()):,} -> {int(y_smote.sum()):,}")
 """)
 
 code("""
 # Check your work
+# Equal frauds and honest rows after SMOTE
 assert int(y_smote.sum()) == int((y_train == 0).sum()), "after SMOTE the classes should be equal"
 """)
 
@@ -1784,13 +2190,16 @@ md("""
 ### Step 2.24: Train the same XGBoost on the resampled rows and score it
 
 The classes are now balanced, so the class weight is 1.
+
+**Concept: change one thing at a time.** The model settings are those of Step 2.9; only the training rows and the
+class weight differ, so any difference in the score comes from the resampling.
 """)
 
 code("""
 # Same settings as Step 2.9, but no class weight
 smote_model = XGBClassifier(max_depth=3, scale_pos_weight=1, n_jobs=N_JOBS).fit(X_smote, y_smote)
 
-# Score on the filled test inputs
+# Put the SMOTE model on the scoreboard, scored on the filled test inputs
 score_model("XGBoost + SMOTE", smote_model.predict_proba(X_test_filled)[:, 1])
 
 # Free the resampled copies
@@ -1799,6 +2208,7 @@ del X_smote, y_smote, X_train_filled, X_test_filled
 
 code("""
 # Check your work
+# The SMOTE model's PR-AUC is 0.9995
 assert round(results["XGBoost + SMOTE"]["PR-AUC"], 4) == 0.9995, "SMOTE PR-AUC changed"
 """)
 
@@ -1819,30 +2229,56 @@ honest. For tree models `TreeExplainer` computes them exactly.
 code("""
 # SHAP's progress bar warning is about the display, not the analysis
 warnings.filterwarnings("ignore", message="IProgress not found")
+# The SHAP library
 import shap
 
 # An explainer for the XGBoost model
 explainer = shap.TreeExplainer(model)
+# Type of the explainer
 print(type(explainer))
+""")
+
+code("""
+# Check your work
+# A tree explainer
+assert isinstance(explainer, shap.TreeExplainer), f"expected a TreeExplainer, got {type(explainer)}"
 """)
 
 md("""
 ### Step 2.26: Explain one fraud and one honest transfer
+
+Explain the highest-scoring fraud and the first honest TRANSFER of the test window.
+
+**Concept: a local explanation.** One transaction's SHAP values, added to the average, give that transaction's
+score on the model's internal log-odds scale, so they say why this one was flagged.
 """)
 
 code("""
-# The highest-scoring fraud in the test window, and the first honest TRANSFER
+# The highest-scoring fraud in the test window
 fraud_row = X_test[y_test == 1].iloc[[int(np.argmax(xgb_scores[(y_test == 1).to_numpy()]))]]
+# The first honest TRANSFER in the test window
 honest_row = X_test[(y_test == 0) & (X_test["type"] == 0)].iloc[[0]]
-
-for label, row in [("fraud", fraud_row), ("honest", honest_row)]:
+# XGBoost's score for the fraud
+fraud_score = float(model.predict_proba(fraud_row)[0, 1])
+# XGBoost's score for the honest transfer
+honest_score = float(model.predict_proba(honest_row)[0, 1])
+# For each of the two rows, print the score and the three inputs that pushed it most
+for explain_label, explain_row in [("fraud", fraud_row), ("honest", honest_row)]:
     # Each input's push on this row's score
-    contributions = pd.Series(explainer.shap_values(row)[0], index=MODEL_COLS)
+    contributions = pd.Series(explainer.shap_values(explain_row)[0], index=MODEL_COLS)
     # The three largest pushes, by size
     top = contributions.reindex(contributions.abs().sort_values(ascending=False).index)[:3]
-    print(f"{label} transaction, score {model.predict_proba(row)[0, 1]:.4f}; largest pushes:")
-    for name, value in top.items():
-        print(f"   {name:18s} value {row[name].iloc[0]:>14,.2f}   push {value:+.2f}")
+    print(f"{explain_label} transaction, score {model.predict_proba(explain_row)[0, 1]:.4f}; largest pushes:")
+    for push_name, push_value in top.items():
+        print(f"   {push_name:18s} value {explain_row[push_name].iloc[0]:>14,.2f}   push {push_value:+.2f}")
+""")
+
+code("""
+# Check your work
+# The fraud scores near 1
+assert fraud_score > 0.99, f"expected the fraud to score above 0.99, got {fraud_score:.4f}"
+# The honest transfer scores near 0
+assert honest_score < 0.01, f"expected the honest transfer to score below 0.01, got {honest_score:.4f}"
 """)
 
 md("""
@@ -1853,6 +2289,9 @@ do.
 
 ### Step 2.27: Explain 2,000 test transfers at once
 
+**Concept: a global explanation.** Averaging the size of each input's SHAP values over many rows ranks the inputs
+by how much they move the score overall.
+
 The summary plot has one row per input and one dot per transaction, coloured by the input's value and placed by
 how far it pushed the score.
 """)
@@ -1860,26 +2299,35 @@ how far it pushed the score.
 code("""
 # 2,000 random test rows and their SHAP values
 shap_sample = X_test.sample(2_000, random_state=SEED)
+# SHAP values for those rows
 shap_values = explainer.shap_values(shap_sample)
+# Type and size: one value per row and input
 print(type(shap_values), shap_values.shape)
 
-# The summary plot
+# Draw the summary plot without showing it yet
 shap.summary_plot(shap_values, shap_sample, show=False, max_display=9)
+# Title of the summary plot
 plt.title("What pushes the XGBoost score, 2,000 test transactions")
+# Keep the summary plot inside its margins
 plt.tight_layout()
+# Save it as figs/shap_summary.png
 plt.savefig("figs/shap_summary.png", dpi=150, bbox_inches="tight")
+# Show the summary plot
 plt.show()
 """)
 
 code("""
 # Average size of each input's push: its overall importance
 importance = pd.Series(np.abs(shap_values).mean(axis=0), index=MODEL_COLS).sort_values(ascending=False)
+# Heading for the importance list
 print("mean |SHAP| by input:")
+# Print each input's mean |SHAP|, largest first
 print(importance.round(3).to_string())
 """)
 
 code("""
 # Check your work
+# newBalanceOrig first, errorBalanceOrig second
 assert importance.index[0] == "newBalanceOrig" and importance.index[1] == "errorBalanceOrig", "the top two inputs changed"
 """)
 
@@ -1911,24 +2359,32 @@ of money. A fraud team is judged on money.
 code("""
 # Amounts and labels of the test rows, as arrays
 amount_test = X_test["amount"].to_numpy()
+# True where a test row is fraud
 truth = y_test.to_numpy() == 1
 
 # Total value of all test-window fraud
 total_fraud_value = amount_test[truth].sum()
+# The total is a single number
 print(type(total_fraud_value))
+# Print the test-window totals
 print(f"test window: {len(y_test):,} transactions, {int(truth.sum()):,} frauds worth {total_fraud_value / 1e9:.2f} billion")
 """)
 
 code("""
 # Check your work
+# 4.19 billion of fraud in the test window
 assert round(total_fraud_value / 1e9, 2) == 4.19, f"expected 4.19 billion, got {total_fraud_value / 1e9:.2f}"
 """)
 
 md("""
 ### Step 3.2: Write one function that counts what a screen stops and what it costs
+
+**Concept: one function for every screen.** Every screen is counted by the same function, so the rows of the
+Step 3.3 table differ only in the flags, never in the arithmetic.
 """)
 
 code("""
+# A function that counts what a set of flags stops and what it freezes
 def screen_outcome(flagged):
     # Make sure the flags are True/False
     flagged = np.asarray(flagged).astype(bool)
@@ -1941,7 +2397,17 @@ def screen_outcome(flagged):
 
 
 # Try it on a screen that flags nothing
-print(screen_outcome(np.zeros(len(y_test), dtype=bool)))
+nothing_outcome = screen_outcome(np.zeros(len(y_test), dtype=bool))
+# Print the counts for the empty screen
+print(nothing_outcome)
+""")
+
+code("""
+# Check your work
+# An empty screen stops no fraud
+assert nothing_outcome["frauds caught"] == 0 and nothing_outcome["fraud value stopped"] == 0, "an empty screen should stop nothing"
+# and freezes no honest customer
+assert nothing_outcome["honest customers frozen"] == 0, "an empty screen should freeze no one"
 """)
 
 md("""
@@ -1949,6 +2415,9 @@ md("""
 
 No screening, PaySim's built-in flag, the 200,000 rule, the two-question tree, and XGBoost at the two cut-offs
 from Steps 2.12 and 2.14.
+
+**Concept: the business-impact table.** One row per screen: frauds caught and missed, fraud value stopped, and
+honest customers frozen with the value of their transfers.
 """)
 
 code("""
@@ -1962,56 +2431,87 @@ screens = {
     f"XGBoost, cheapest cut-off ({cutoffs[cheapest]:.2f})": xgb_scores >= cutoffs[cheapest],
 }
 
-# One outcome per screen
+# An empty dictionary, one outcome per screen
 outcomes = {}
+# Count the outcome of each screen
 for name, screen_flags in screens.items():
     outcomes[name] = screen_outcome(screen_flags)
+# Turn the outcomes into a table, one row per screen
 impact = pd.DataFrame.from_dict(outcomes, orient="index")
+# Type and size of the table
 print(type(impact), impact.shape)
 """)
 
 code("""
-# Show the table, with the value share as a percentage
+# A copy of the table for display
 shown = impact.copy()
+# Show the value share as a percentage
 shown["share of fraud value stopped"] = shown["share of fraud value stopped"].map("{:.2%}".format)
+# Display the table
 shown
 """)
 
 code("""
 # Check your work
+# The row name of XGBoost at the 99%-precision cut-off
 model_screen = f"XGBoost, 99%-precision cut-off ({operating_threshold:.2f})"
+# The model stops more value than the built-in flag
 assert impact.loc[model_screen, "fraud value stopped"] > impact.loc["Built-in flag (isFlaggedFraud)", "fraud value stopped"], "the model should beat the built-in flag"
+# No screen stops more than all the fraud
 assert (impact["share of fraud value stopped"] <= 1).all(), "no screen can stop more than all the fraud"
+# The built-in flag catches 10 test frauds
 assert impact.loc["Built-in flag (isFlaggedFraud)", "frauds caught"] == 10, "the built-in flag should catch 10 test frauds"
 """)
 
 md("""
 ### Step 3.4: Chart value stopped against honest customers frozen
+
+**Concept: a trade-off chart.** Two panels with the screens in the same order let a manager read the benefit and
+the cost of each screen side by side.
 """)
 
 code("""
+# A wide figure: value stopped on the left, customers frozen on the right
 fig, axes = plt.subplots(1, 2, figsize=(14, 4.8))
 
-# Left: share of fraud value stopped, in percent
+# Each screen's share of fraud value stopped, in percent
 value_share_pct = impact["share of fraud value stopped"] * 100
+# One bar per screen
 value_share_pct.plot(kind="barh", ax=axes[0], color="#2e5c8a")
+# Label the value chart's x-axis
 axes[0].set_xlabel("Share of test-window fraud value stopped (%)")
+# Title of the value chart
 axes[0].set_title("Fraud value stopped")
+# Write each share beside its bar
 for bar_position, bar_value in enumerate(value_share_pct):
     axes[0].text(bar_value + 1, bar_position, f"{bar_value:.1f}%", va="center", fontsize=9)
+# Room on the right for the share labels
 axes[0].set_xlim(0, 115)
 
-# Right: honest customers frozen
+# Right: honest customers frozen by each screen
 impact["honest customers frozen"].plot(kind="barh", ax=axes[1], color="#c0504d")
+# Label the frozen chart's x-axis
 axes[1].set_xlabel("Honest customers frozen (false alarms)")
+# Title of the frozen chart
 axes[1].set_title("The cost: honest customers frozen")
+# Write each count beside its bar
 for bar_position, bar_value in enumerate(impact["honest customers frozen"]):
     axes[1].text(bar_value + 2, bar_position, f"{bar_value:,}", va="center", fontsize=9)
+# Drop the repeated screen names on the right panel
 axes[1].set_yticklabels([])
 
+# Keep the two impact panels apart
 plt.tight_layout()
+# Save them as figs/fraud_value_by_screen.png
 plt.savefig("figs/fraud_value_by_screen.png", dpi=150, bbox_inches="tight")
+# Show the impact chart
 plt.show()
+""")
+
+code("""
+# Check your work
+# The impact chart was saved
+assert os.path.isfile("figs/fraud_value_by_screen.png"), "figs/fraud_value_by_screen.png was not written"
 """)
 
 md("""
@@ -2031,14 +2531,28 @@ code("""
 # Importance from Step 2.27, smallest at the bottom of the chart
 drivers = importance.sort_values()
 
-# Horizontal bars
+# A blank chart for the drivers
 fig, ax = plt.subplots(figsize=(9, 4.5))
+# One horizontal bar per input
 drivers.plot(kind="barh", ax=ax, color="#2e5c8a")
+# Label the x-axis with the measure
 ax.set_xlabel("Average push on the score (mean |SHAP|)")
+# Title of the drivers chart
 ax.set_title("What the XGBoost model looks at most")
+# Keep the drivers chart inside its margins
 plt.tight_layout()
+# Show the drivers chart
 plt.show()
+# Type and length: one value per input
 print(type(drivers), drivers.shape)
+""")
+
+code("""
+# Check your work
+# Nine inputs on the chart
+assert len(drivers) == 9, f"expected 9 inputs, got {len(drivers)}"
+# The top driver is the sender's new balance
+assert drivers.index[-1] == "newBalanceOrig", f"the top driver changed to {drivers.index[-1]}"
 """)
 
 md("""
@@ -2059,17 +2573,22 @@ it rather than copying it, so the two cannot drift apart.
 code("""
 # Let Python find the modules in src/
 sys.path.insert(0, "src")
+# The tested feature code and the list of shipped inputs
 from features import FEATURE_COLS, engineer_features
 
 # The shipped features for rows 2 and 3
 shipped_examples = engineer_features(raw_examples)
+# Type and size of the shipped features
 print(type(shipped_examples), shipped_examples.shape)
+# Show the five shipped inputs for rows 2 and 3
 shipped_examples[FEATURE_COLS]
 """)
 
 code("""
 # Check your work
+# Row 3's recipient gap is 21,363
 assert shipped_examples.loc[3, "dest_balance_discrepancy"] == 21_363, "row 3's recipient gap should be 21,363"
+# Row 2 drains the sender's whole balance
 assert shipped_examples.loc[2, "orig_drain_ratio"] > 0.99, "row 2 should drain the sender's whole balance"
 """)
 
@@ -2082,6 +2601,7 @@ Now read the shipped model's results. `outputs/holdout_metrics.json` is written 
 """)
 
 code("""
+# json: read the pipeline's files and write this notebook's results
 import json
 
 # The shipped model's holdout metrics
@@ -2092,14 +2612,19 @@ with open("outputs/holdout_metrics.json", encoding="utf-8") as handle:
 with open("dashboard/data/business_impact.json", encoding="utf-8") as handle:
     shipped_impact = json.load(handle)["results"]["Model, threshold 0.8852"]
 
+# Print the holdout size
 print(f"holdout rows {shipped_holdout['holdout_rows']:,}, frauds {shipped_holdout['holdout_frauds']:,}")
+# Print the caught, missed and false-alarm counts
 print(f"caught {shipped_holdout['frauds_caught']:,}, missed {shipped_holdout['frauds_missed']}, false alarms {shipped_holdout['false_alarms']}")
+# Print the PR-AUC and the value share
 print(f"PR-AUC {shipped_holdout['pr_auc']:.4f}, share of fraud value stopped {shipped_impact['share_of_fraud_value_stopped']:.2%}")
 """)
 
 code("""
 # Check your work
+# The same 132,136 test rows
 assert shipped_holdout["holdout_rows"] == len(X_test), "the shipped model should be scored on the same test rows"
+# 2,742 caught and 3 false alarms
 assert shipped_holdout["frauds_caught"] == 2_742 and shipped_holdout["false_alarms"] == 3, "shipped holdout counts changed"
 """)
 
@@ -2112,13 +2637,13 @@ value, with five inputs and no raw balances. How it differs from this notebook:
 | Inputs | 9, including the raw balances and the hour | 5: the amount, the two balance errors, and two ratios (how much of the sender's balance moved, and the amount against the recipient's balance) |
 | Raw balances | Kept, to show what they do | Removed: the model used "balance hits zero" as a shortcut |
 | Settings | Library defaults, class weight 482 | Tuned on earlier windows only (35 trees, class weight 2.14) |
-| Probabilities | Raw model scores | Calibrated, so a score of 0.9 means about a 90% chance |
-| Cut-off | Chosen on the test window, for teaching | Cheapest at a 100:1 cost ratio, chosen on calibration data before the test window |
+| Probabilities | Raw model scores | Calibrated (isotonic) on the training hours just before the test window, so scores read as the fraud frequencies seen there |
+| Cut-off | Chosen on the test window, for teaching | Cheapest at 1,000 units per missed fraud and 10 per false alarm (assumed), chosen on calibration hours before the test window |
 | Over time | Four test periods, cut-off fixed | Four expanding retraining windows, plus input-drift monitoring |
 
 ### What a fraud team should do with this
 
-1. **Screen TRANSFER and CASH_OUT only, on the ledger errors.** A two-question rule on the ledger errors already
+1. **Screen TRANSFER and CASH_OUT only, on the ledger errors.** On this simulated data a two-question rule on the ledger errors already
    stops half the fraud value for 79 false alarms; a boosted model on the same idea stops almost all of it.
 2. **Set the cut-off from your own costs**, and restate precision at your real fraud rate before sizing the
    review queue (Step 2.15: 93.4% here, not 99%).
@@ -2139,12 +2664,17 @@ First, a small helper that asks git a question and returns nothing if git is not
 """)
 
 code("""
+# platform: the Python version
 import platform
+# subprocess: run git from Python
 import subprocess
+# datetime: today's date in UTC
 from datetime import datetime, timezone
+# version: each installed library's version
 from importlib.metadata import PackageNotFoundError, version
 
 
+# A function that runs one git command and returns what it printed
 def git(*args):
     try:
         # Run git and return what it printed
@@ -2155,6 +2685,7 @@ def git(*args):
         return None
 
 
+# Print the commit this run used
 print("git commit:", git("rev-parse", "--short", "HEAD"))
 """)
 
@@ -2166,6 +2697,7 @@ code("""
 # "git status --porcelain" prints one line per changed file and nothing if the code is clean. The notebook,
 # figures and outputs are left out because running this notebook rewrites them.
 changed_files = git("status", "--porcelain", "--", ".", ":(exclude)*.ipynb", ":(exclude)figs", ":(exclude)outputs")
+# True when code changed since the commit; None when git is missing
 if changed_files is None:
     uncommitted_code_changes = None
 else:
@@ -2173,7 +2705,9 @@ else:
 
 # The version of each library that produced the numbers
 package_names = ["numpy", "pandas", "scikit-learn", "xgboost", "lightgbm", "imbalanced-learn", "shap", "matplotlib", "seaborn"]
+# An empty dictionary for the versions
 package_versions = {}
+# Look up each library's version
 for package_name in package_names:
     try:
         package_versions[package_name] = version(package_name)
@@ -2189,6 +2723,7 @@ run_record = {
     "python": platform.python_version(),
     "packages": package_versions,
 }
+# Print the run record
 print(json.dumps(run_record, indent=2))
 """)
 
@@ -2197,19 +2732,22 @@ Then turn the model scores and SHAP importances into plain numbers that JSON can
 """)
 
 code("""
-# One entry per model: every metric turned into a plain float
+# An empty dictionary, one entry per model
 model_metrics = {}
+# Copy every metric as a plain float
 for model_name in results:
     model_metrics[model_name] = {}
     for metric_name, value in results[model_name].items():
         model_metrics[model_name][metric_name] = float(value)
 
-# Mean |SHAP| per input, as plain floats
+# An empty dictionary for the mean |SHAP| per input
 shap_mean_abs = {}
+# Copy each input's importance as a plain float
 for feature_name, value in importance.items():
     shap_mean_abs[feature_name] = float(value)
 
 
+# A function JSON uses for numpy numbers it cannot write itself
 def to_json_value(value):
     # numpy numbers have .item() to turn them into plain Python numbers; anything else is written as text
     if hasattr(value, "item"):
@@ -2217,6 +2755,7 @@ def to_json_value(value):
     return str(value)
 
 
+# How many models and inputs will be written
 print(len(model_metrics), "models,", len(shap_mean_abs), "inputs")
 """)
 
@@ -2225,6 +2764,7 @@ Finally, assemble the file and write it.
 """)
 
 code("""
+# Every result this notebook writes, grouped by part
 notebook_results = {
     "provenance": run_record,
     "data": {
@@ -2261,17 +2801,21 @@ notebook_results = {
     "shap_mean_abs": shap_mean_abs,
 }
 
-# Write it
+# Write the results file
 with open("outputs/notebook_results.json", "w", encoding="utf-8") as f:
     json.dump(notebook_results, f, indent=2, default=to_json_value)
+# Confirm the file was written
 print("Wrote outputs/notebook_results.json with", len(notebook_results), "sections")
 """)
 
 code("""
 # Check your work
+# Read the file back
 with open("outputs/notebook_results.json", encoding="utf-8") as handle:
     written = json.load(handle)
+# It holds the test-window fraud count
 assert written["split"]["test_frauds"] == 2_754, "the results file should hold the test-window fraud count"
+# It holds all seven models
 assert len(written["models"]) == 7, f"expected 7 models in the results file, got {len(written['models'])}"
 """)
 
@@ -2292,7 +2836,7 @@ md("""
 
 ## Limitations
 
-- **PaySim is a simulator.** Once the ledger errors exist, its fraud labels follow from them almost exactly,
+- **PaySim is a simulator, and no real operator's data was used.** Once the ledger errors exist, its fraud labels follow from them almost exactly,
   which is why a random forest reaches PR-AUC 1.0000. The scores show that the method works; they say nothing
   about the accuracy to expect on a real network.
 - **One fraud signature.** 97.82% of simulated frauds drain the sender's whole balance. Partial-skim fraud, where
@@ -2303,7 +2847,10 @@ md("""
   because honest volume collapses late in the simulation. Every precision figure depends on that mix.
 - **The cut-offs here are chosen on the test window.** That is fine for teaching and not for deployment; the
   shipped pipeline chooses its cut-off on calibration data that precedes the test window.
-- **Money figures are simulated units**, and the 10-to-1 cost ratio is an assumption, not a measurement.
+- **Money figures are simulated units**, and the costs behind the cut-offs (10 units per missed fraud and 1 per
+  false alarm here; 1,000 and 10 in the shipped pipeline) are assumptions, not an operator's figures.
+- **One later window, no retraining.** This notebook's model is tested once on the hours after 490, split into
+  four periods. The shipped pipeline's walk-forward check (`src/validate.py`) retrains on four expanding windows.
 - **No account history.** Almost every account appears once, so the features a real fraud team relies on
   (velocity, repeat recipients, device and location) cannot be built from this data.
 
@@ -2331,6 +2878,12 @@ md("""
 - **SMOTE:** a resampling method that creates synthetic examples of the rare class (Chawla et al., 2002).
 - **SHAP value:** one input's contribution to one prediction, against an average prediction (Lundberg and Lee,
   2017).
+- **Time split / walk-forward validation:** testing only on transactions later than every training row; walk-forward
+  repeats that over several successive later windows, retraining each time.
+- **Calibration:** mapping raw model scores to probabilities that match how often fraud actually occurred at each
+  score.
+- **PSI (Population Stability Index):** a measure of how much a feature's distribution in a new window differs from
+  the training window; below 0.10 is usually read as stable, 0.25 or more as a shift to investigate.
 """)
 
 nb = nbf.v4.new_notebook()
