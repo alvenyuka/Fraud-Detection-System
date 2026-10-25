@@ -9,20 +9,28 @@ request that carries it is merged.
 
 ## [Unreleased]
 
-## [1.1.0] - 2026-10-22
+## [1.1.0] - 2026-10-25
+
+The notebook becomes a guided build a newcomer can follow cell by cell. No model figure changes:
+`model/`, `api/`, `figures/`, `figs/`, `dashboard/data/` and `outputs/holdout_metrics.json` are identical to
+1.0.0, and `outputs/notebook_results.json` differs only in its run record.
 
 ### Changed
 
-- `Fraud_Detection_System.ipynb` is rebuilt (from `build_notebook.py`) as a slow, guided walkthrough in three
-  parts: Prepare Data, Build Model and Communicate Results. Every numbered step has a short explanation, a
-  Concept line, one small code cell with a comment above each line, a printout of what changed, and a Check your
-  work cell with asserts. The numbers in `outputs/notebook_results.json` are unchanged apart from the run record.
-
-### Added
-
-- Notebook steps that show the error a text column causes, print the balance-fingerprint correlations, chart the
-  model's drivers, and run `engineer_features` from `src/features.py` on two frauds before reading the shipped
-  model's holdout files.
+- `Fraud_Detection_System.ipynb` (written by `build_notebook.py`) is rebuilt in three parts, Prepare Data, Build
+  Model and Communicate Results, of 61 numbered steps. Each step has one instruction, a Concept line, one small
+  code cell, printed output and a Check your work cell (62 in all) that stops the run if the step went wrong.
+- Every top-level statement in a code cell has a comment describing its own line (552 of 552); no comment
+  text repeats except the "Check your work" header.
+- Notebook wording: it opens by saying real-world performance is unproven; XGBoost is the model carried
+  forward, not the best scorer (the random forest is higher); LightGBM's failure is not given an untested
+  cause; the balance fingerprint is read the right way round; both notebooks' costs are named as assumptions;
+  PSI, walk-forward validation and calibration are explained and added to the glossary; a limitation notes the
+  notebook's model is tested on one later window without retraining.
+- The notebook was executed on the full PaySim file at commit f386128 in 19 minutes; the run record names
+  that commit with no uncommitted code.
+- `tests/test_readme_numbers.py` takes the fingerprint correlations (0.99, 0.09, 0.65) from the notebook's
+  printed output instead of the chart.
 
 ## [1.0.0] - 2026-10-25
 

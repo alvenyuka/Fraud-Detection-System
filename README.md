@@ -234,8 +234,9 @@ model/          trained model, tuned settings, JSON export
 tests/          73 tests: time split, the two fixed leaks, accounting identity, threshold, PSI, API, port parity
 MODEL_CARD.md   intended use, evaluation, limitations
 docs/           METHODOLOGY.md: tuning, walk-forward details, drift findings
-Fraud_Detection_System.ipynb   data exploration and model comparison; its scores come from its own
-                               wider feature set, not the shipped model
+Fraud_Detection_System.ipynb   guided build, written by build_notebook.py: data checks, exploration, a
+                               baseline, model comparison and value stopped; its scores come from its
+                               own nine inputs, not the shipped model
 ```
 
 ## License

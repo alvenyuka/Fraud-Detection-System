@@ -12,7 +12,7 @@ five kinds:
   outputs/notebook_results.json;
 - a setting the code runs with, read from src/ (the split hour, the windows,
   the two costs behind the threshold);
-- a figure the executed notebook draws, listed with the figure file;
+- a figure the executed notebook prints, found in its saved output;
 - a figure from the project's history, found in MODEL_CARD.md;
 - a fixed number that is part of the wording (a step number, "1.0 is perfect",
   a citation year), listed with the reason it is fixed.
@@ -56,6 +56,21 @@ SCENARIOS = read_json("dashboard/data/scenario_table.json")
 NOTEBOOK_RESULTS = read_json("outputs/notebook_results.json")
 BUNDLE = joblib.load(ROOT / "model" / "xgb_fraud_model.pkl")
 MODEL_CARD = (ROOT / "MODEL_CARD.md").read_text(encoding="utf-8")
+
+
+def notebook_printed_text():
+    # Join every text output the executed notebook saved, so a figure the
+    # README takes from the notebook can be found in what the notebook printed
+    notebook = json.loads((ROOT / "Fraud_Detection_System.ipynb").read_text(encoding="utf-8"))
+    pieces = []
+    for cell in notebook["cells"]:
+        for output in cell.get("outputs", []):
+            text = output.get("text") or output.get("data", {}).get("text/plain", "")
+            pieces.append("".join(text))
+    return "\n".join(pieces)
+
+
+NOTEBOOK_TEXT = notebook_printed_text()
 
 
 def psi_in_last_window():
@@ -131,7 +146,7 @@ def readme_numbers():
 # The expected sequence, one entry per occurrence
 # ---------------------------------------------------------------------------
 
-FIGURE_NUMBERS = []     # (README text, figure file the notebook draws)
+NOTEBOOK_NUMBERS = []   # (README text, pattern in the notebook's printed output)
 HISTORY_NUMBERS = []    # (README text, text in MODEL_CARD.md)
 
 
@@ -145,10 +160,9 @@ def setting(text):
     return text
 
 
-def from_figure(text, figure, why):
-    # A value read off a chart the notebook draws; the chart must be committed
-    assert why
-    FIGURE_NUMBERS.append((text, figure))
+def from_notebook(text, pattern):
+    # A figure the executed notebook prints; the pattern must match its output
+    NOTEBOOK_NUMBERS.append((text, pattern))
     return text
 
 
@@ -277,9 +291,10 @@ def expected_numbers():
     # Step 2: the built-in flag
     seq += [result(str(builtin["frauds_caught"])), count(frauds), result(builtin_share)]
     # Step 3: the balance fingerprint caption
-    seq += [from_figure("0.99", "figs/balance_fingerprint.png", "honest: amount against the sender error"),
-            from_figure("0.09", "figs/balance_fingerprint.png", "fraud: amount against the sender error"),
-            from_figure("0.65", "figs/balance_fingerprint.png", "fraud: amount against the recipient error")]
+    sender_row = r"errorBalanceOrig\s+0\.99\s+0\.09"   # Step 1.25's table: honest, then fraud
+    recipient_row = r"errorBalanceDest\s+-0\.26\s+0\.65"
+    seq += [from_notebook("0.99", sender_row), from_notebook("0.09", sender_row),
+            from_notebook("0.65", recipient_row)]
     # Step 4: the time split
     seq += [fixed("1", "first hour"), split_step, fixed("1", "first hour"), fit_end, calibration_start, split_step,
             result(str(int(split_step) + 1)), last_hour]
@@ -371,11 +386,11 @@ def test_every_readme_number_in_order():
     assert len(found) == len(expected), f"README ends before the expected number {expected[len(found)]!r}"
 
 
-def test_figure_numbers_come_from_committed_charts():
+def test_notebook_numbers_are_printed_by_the_notebook():
     expected_numbers()
-    assert FIGURE_NUMBERS
-    for text, figure in FIGURE_NUMBERS:
-        assert (ROOT / figure).is_file(), f"README figure {text} cites {figure}, which is not committed"
+    assert NOTEBOOK_NUMBERS
+    for text, pattern in NOTEBOOK_NUMBERS:
+        assert re.search(pattern, NOTEBOOK_TEXT), f"README figure {text} is not in the notebook's output ({pattern!r})"
 
 
 def test_history_numbers_are_recorded_in_the_model_card():

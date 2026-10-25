@@ -135,11 +135,11 @@ below it needs the 470MB PaySim CSV, and the notebook is the heavy one:
 | `make train` | yes | about a minute |
 | `make tune` | yes | 40 trials; the 2026-10-02 run took 4 hours on a machine shared with other jobs |
 | `make validate` | yes | under two minutes, four walk-forward folds |
-| the notebook, end to end | yes | 27 minutes for the stored run (peak memory was about 4.3 GB on the 2026-10 run) |
+| the notebook, end to end | yes | 19 minutes for the stored run of 2026-10-25 (its processes peaked at about 3 GB, sampled every 30 seconds) |
 
 The notebook is the analysis behind the pipeline, written as a guided walkthrough a junior analyst can follow
 cell by cell. It has three parts of numbered steps; each step has a short explanation, a Concept line, one small
-code cell with a comment per line and a printout, and a Check your work cell with asserts. Part 1, Prepare Data,
+code cell with a comment above every statement and a printout, and a Check your work cell with asserts (62 in all). Part 1, Prepare Data,
 loads the CSV with `pd.read_csv`, checks it, explores it by type, amount, time of day, account and balance
 pattern, works through two real frauds, turns the ledger identity into features behind a leakage guard, and
 splits by time. Part 2, Build Model, scores a documented rule as the baseline, then a two-question tree,
