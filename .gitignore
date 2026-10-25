@@ -36,6 +36,9 @@ wheels/
 .installed.cfg
 *.egg
 
+# Test runner cache (pytest writes it on every run)
+.pytest_cache/
+
 # ============================================================
 # Virtual environments
 # ============================================================
