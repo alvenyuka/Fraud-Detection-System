@@ -758,13 +758,15 @@ plt.show()
 
 code("""
 # Check your work
-# More than half of 4 and 5 a.m. transfers are fraud
-assert by_hour.loc[4] > 50 and by_hour.loc[5] > 50, "expected more than half of 4 and 5 a.m. transfers to be fraud"
+# More than half of the transfers in hours 4 and 5 are fraud
+assert by_hour.loc[4] > 50 and by_hour.loc[5] > 50, "expected more than half of hour-4 and hour-5 transfers to be fraud"
 """)
 
 md("""
-The rate jumps in the early hours: at 4 and 5 in the morning more than half of these transactions are fraud.
-Fraud keeps going around the clock while honest activity drops off at night. The hour of day is therefore kept
+The rate jumps in hours 3 to 6: in hours 4 and 5 more than half of these transactions are fraud. PaySim does not
+document which clock hour step 1 is, so these are hours of the simulated day, not necessarily 4 and 5 a.m. A
+higher fraud share means fewer honest transactions per fraud in those hours; this notebook does not chart honest
+volume by hour. The hour of day is therefore kept
 as a model input in Step 1.21.
 
 ### Step 1.17: Check who sends and who receives
@@ -1079,10 +1081,15 @@ panels = [(axes[0], "amount", "Amount"), (axes[1], "errorBalanceDest", "Recipien
 for panel_ax, panel_col, panel_title in panels:
     # Clip extreme values so the bins stay readable
     values = features.loc[sample, panel_col].clip(lower=-1e6, upper=1e7)
+    # Histogram of the honest sample's values
     panel_ax.hist(values[target[sample] == 0], bins=80, alpha=0.6, density=True, label="honest (sample)")
+    # Histogram of every fraud's values
     panel_ax.hist(values[target[sample] == 1], bins=80, alpha=0.6, density=True, label="fraud (all)")
+    # Name the panel
     panel_ax.set_title(panel_title)
+    # Log scale on the y-axis, so the tall bins do not hide the rest
     panel_ax.set_yscale("log")
+    # Key for the honest and fraud bars
     panel_ax.legend()
 # Keep the two histogram panels apart
 plt.tight_layout()
@@ -1146,7 +1153,9 @@ fig, axes = plt.subplots(1, 2, figsize=(14, 5.5))
 heatmaps = [(axes[0], "honest", honest_corr), (axes[1], "fraud", fraud_corr)]
 # Draw one annotated heatmap per panel
 for heat_ax, heat_label, heat_table in heatmaps:
+    # An annotated heatmap of this table, -1 blue to +1 red
     sns.heatmap(heat_table, vmin=-1, vmax=1, cmap="RdBu_r", annot=True, fmt=".2f", square=True, cbar=False, ax=heat_ax)
+    # Name the panel after its group
     heat_ax.set_title(f"Correlation of balance fields, {heat_label} transactions")
 # Keep the two heatmaps apart
 plt.tight_layout()
@@ -1176,10 +1185,28 @@ assert round(fingerprint.loc["errorBalanceOrig", "fraud"], 2) == 0.09, "fraud am
 assert round(fingerprint.loc["oldBalanceOrig", "fraud"], 2) == 0.86 and round(fingerprint.loc["errorBalanceDest", "fraud"], 2) == 0.65, "fraud fingerprint changed"
 """)
 
+code("""
+# Honest transfers whose sender balance is recorded (not NaN), the rows behind the honest 0.99
+recorded_honest = (target == 0) & features["oldBalanceOrig"].notna()
+# Share of them that send more than the recorded balance
+sends_more_share = (features.loc[recorded_honest, "amount"] > features.loc[recorded_honest, "oldBalanceOrig"]).mean()
+# Print how many such rows there are and the share
+print(f"honest senders with a recorded balance: {int(recorded_honest.sum()):,}; sending more than it: {sends_more_share:.1%}")
+""")
+
+code("""
+# Check your work
+# 1,453,655 honest transfers have a recorded sender balance
+assert int(recorded_honest.sum()) == 1_453_655, f"expected 1,453,655 rows, got {int(recorded_honest.sum()):,}"
+# 81.2% of them send more than that balance
+assert round(sends_more_share * 100, 1) == 81.2, f"expected 81.2%, got {sends_more_share:.1%}"
+""")
+
 md("""
 Read the `amount` row of each heatmap (printed above). In honest transfers the sender error moves almost exactly
-with the amount (0.99), because so many honest sender balances are unrecorded; in fraud it barely does (0.09),
-because fraud debits the sender exactly. In fraud the amount moves with the sender's old balance (0.86), because a fraud
+with the amount (0.99), because most honest senders whose balance is recorded send more than that balance (the
+share is printed above), so the gap grows with the amount. Unrecorded senders are `NaN` since Step 1.22, and
+`.corr()` leaves them out. In fraud it barely does (0.09), because fraud debits the sender exactly. In fraud the amount moves with the sender's old balance (0.86), because a fraud
 takes what the account holds, and with the recipient error (0.65), because what was taken does not arrive.
 
 ### Step 1.26: Fix the model inputs and run the leakage guard
@@ -1200,14 +1227,18 @@ LEAKY_COLUMNS = ["isFraud", "isFlaggedFraud", "nameOrig", "nameDest", "step"]
 MODEL_COLS = []
 # Add every column except step
 for column in features.columns:
+    # Skip the hour counter
     if column != "step":
+        # Keep this column as an input
         MODEL_COLS.append(column)
 
 # An empty list for any leaky column
 leaked = []
 # Collect any input that is on the leaky list
 for column in MODEL_COLS:
+    # Is this input on the leaky list?
     if column in LEAKY_COLUMNS:
+        # Record it
         leaked.append(column)
 # Print the inputs
 print("model inputs:", MODEL_COLS)
@@ -1309,13 +1340,16 @@ def score_model(name, scores):
     meets_floor = precision[:-1] >= 0.99
     # The best recall available while keeping precision at 99% or more
     if meets_floor.any():
+        # The highest recall among those cut-offs
         recall_at_99 = recall[:-1][meets_floor].max()
     else:
+        # No cut-off reaches 99% precision
         recall_at_99 = 0.0
-    # Store the three measures and print a one-line summary
+    # Store the three measures under the model's name
     results[name] = {"PR-AUC": average_precision_score(y_test, scores),
                      "ROC-AUC": roc_auc_score(y_test, scores),
                      "Recall at 99% precision": recall_at_99}
+    # Print a one-line summary for this model
     print(f"{name:34s} PR-AUC {results[name]['PR-AUC']:.4f}   recall at 99% precision {recall_at_99:.4f}")
 
 
@@ -1417,8 +1451,9 @@ assert "errorBalanceOrig <= 0.01" in tree_rules, "the sender-error split changed
 
 md("""
 Read from the top. The tree calls a transaction fraud when the recipient's balance is short by more than about 62
-(`errorBalanceDest > 61.52`) *and* the sender's balance moved by exactly the amount (`errorBalanceOrig <= 0.01`).
-In words: the sender's side is clean, but the money never properly arrived. That is rows 2 and 3.
+(`errorBalanceDest > 61.52`) *and* the sender's side shows no gap (`errorBalanceOrig <= 0.01`): it balanced
+exactly, or it was unrecorded and filled with 0 before fitting, which is the case for 47.37% of honest transfers
+(Step 1.19). In words: the sender's side looks clean, but the money never properly arrived. That is rows 2 and 3.
 
 ### Step 2.5: Count the tree's hits and misses on the test window
 
@@ -1431,15 +1466,20 @@ code("""
 def show_confusion(truth, flags, title):
     # Count the four combinations of truth and prediction
     cm = confusion_matrix(truth, flags)
-    # Draw them as a labelled heatmap
+    # A small blank chart for the matrix
     fig, ax = plt.subplots(figsize=(5, 4))
+    # Draw the four counts as a labelled heatmap
     sns.heatmap(cm, annot=True, fmt=",d", cmap="Blues", cbar=False, ax=ax,
                 xticklabels=["flagged honest", "flagged fraud"], yticklabels=["actually honest", "actually fraud"])
+    # Title the matrix
     ax.set_title(title)
+    # Keep the matrix inside its margins
     plt.tight_layout()
+    # Show the matrix
     plt.show()
     # Recall and precision read off the matrix
     print(f"recall:    {cm[1, 1] / cm[1].sum():.1%}   precision: {cm[1, 1] / max(cm[:, 1].sum(), 1):.1%}")
+    # Hand the counts back
     return cm
 
 
@@ -1449,6 +1489,8 @@ tree_flags = tree.predict(X_test[tree_cols].fillna(0))
 tree_cm = show_confusion(y_test, tree_flags, "Two-question tree, test window")
 # Type and size of the counts
 print(type(tree_cm), tree_cm.shape)
+# The counts: [[honest passed, false alarms], [frauds missed, frauds caught]]
+print(tree_cm.tolist())
 """)
 
 code("""
@@ -1465,14 +1507,14 @@ already far beyond the built-in flag. The frauds it misses need more than two qu
 
 ### Step 2.6: Score the tree with the same function as every other model
 
-Turn the tree's leaves into probabilities and put them through `score_model`.
+Turn the tree's leaves into fraud scores and put them through `score_model`.
 
 **Concept: one yardstick.** Every model is scored by the same function on the same test rows, which is what makes
 the scoreboard in Step 2.19 fair.
 """)
 
 code("""
-# The tree's probability of fraud for each test row
+# The tree's fraud score for each test row: the class-weighted share of fraud in its leaf
 tree_scores = tree.predict_proba(X_test[tree_cols].fillna(0))[:, 1]
 # Type and length of the tree's scores
 print(type(tree_scores), tree_scores.shape)
@@ -1540,9 +1582,12 @@ print(text_rows["type"].dtype)
 
 # Try to fit, and keep the error message instead of stopping the notebook
 try:
+    # Fit a tiny model on the text column
     XGBClassifier(n_estimators=2, n_jobs=N_JOBS).fit(text_rows, y_train.head(1_000))
+    # No error was raised
     text_column_error = None
 except (ValueError, TypeError) as error:
+    # Keep the error message
     text_column_error = str(error)
 # Print the start of the error message
 print(str(text_column_error)[:300])
@@ -1589,8 +1634,10 @@ md("""
 
 Score the test rows and put XGBoost on the scoreboard.
 
-**Concept: scoring on unseen rows.** The test window was never used in training, so its PR-AUC estimates how the
-model does on later transactions of the same simulator.
+**Concept: a score is not a probability.** XGBoost was trained with each fraud counted 482 times (Step 2.7), so
+its output ranks transactions but overstates how likely fraud is. *Calibration* fits a map from score to the fraud
+rate actually seen at that score, on rows the model did not train on; the shipped model is calibrated (Step 3.6),
+this one is not, so its outputs are called scores here. PR-AUC only needs the ranking.
 """)
 
 code("""
@@ -1628,10 +1675,12 @@ curves = [("Two-question tree", tree_scores, "#7f8c8d"), ("XGBoost", xgb_scores,
 for curve_name, curve_scores, curve_color in curves:
     # Precision-recall curve
     curve_precision, curve_recall, _ = precision_recall_curve(y_test, curve_scores)
+    # Draw the PR curve, with its PR-AUC in the key
     axes[0].plot(curve_recall, curve_precision, color=curve_color, lw=2,
                  label=f"{curve_name} (PR-AUC {average_precision_score(y_test, curve_scores):.3f})")
     # ROC curve
     fpr, tpr, _ = roc_curve(y_test, curve_scores)
+    # Draw the ROC curve, with its ROC-AUC in the key
     axes[1].plot(fpr, tpr, color=curve_color, lw=2, label=f"{curve_name} (ROC-AUC {roc_auc_score(y_test, curve_scores):.3f})")
 
 # Random guessing on the PR chart: a flat line at the fraud rate
@@ -1751,7 +1800,9 @@ missed_list = []
 false_alarm_list = []
 # Count both at each cut-off
 for cutoff in cutoffs:
+    # Frauds scored below this cut-off are missed
     missed_list.append(int(((xgb_scores < cutoff) & (y_test == 1)).sum()))
+    # Honest rows at or above it are false alarms
     false_alarm_list.append(int(((xgb_scores >= cutoff) & (y_test == 0)).sum()))
 # The missed counts as an array
 missed = np.array(missed_list)
@@ -1921,7 +1972,7 @@ forest = RandomForestClassifier(n_estimators=200, max_depth=16, min_samples_leaf
 
 # Fit the forest on the training window
 forest.fit(X_train, y_train)
-# Score the forest's test-window probabilities
+# Put the forest's test-window fraud scores on the scoreboard
 score_model("Random forest", forest.predict_proba(X_test)[:, 1])
 """)
 
@@ -1948,7 +1999,7 @@ lgbm = LGBMClassifier(n_estimators=400, num_leaves=31, learning_rate=0.05, min_c
 
 # Fit LightGBM on the training window
 lgbm.fit(X_train, y_train)
-# Score LightGBM's test-window probabilities
+# Put LightGBM's test-window fraud scores on the scoreboard
 score_model("LightGBM", lgbm.predict_proba(X_test)[:, 1])
 """)
 
@@ -1982,9 +2033,12 @@ pr_auc_sorted = scoreboard["PR-AUC"].sort_values()
 bar_colours = []
 # Red for a model below 0.5 PR-AUC, blue for the rest
 for value in pr_auc_sorted:
+    # A model below 0.5 PR-AUC
     if value < 0.5:
+        # gets a red bar
         bar_colours.append("#c0504d")
     else:
+        # Every other model gets a blue bar
         bar_colours.append("#2e5c8a")
 
 # A blank chart for the scoreboard
@@ -1999,6 +2053,7 @@ ax.set_title("Model comparison on the test window")
 ax.set_xlim(0, 1.05)
 # Write each model's PR-AUC beside its bar
 for bar_position, bar_value in enumerate(pr_auc_sorted):
+    # The value, just right of the bar
     ax.text(bar_value + 0.01, bar_position, f"{bar_value:.4f}", va="center", fontsize=9)
 # Keep the scoreboard chart inside its margins
 plt.tight_layout()
@@ -2020,8 +2075,8 @@ md("""
 Three lessons are in this table.
 
 1. **A perfect score is a warning, not a win.** The random forest reaches PR-AUC 1.0000. Real fraud is never this
-   separable. PaySim generates fraud by a simple process, and once the ledger errors exist the label follows
-   from them almost exactly. On a simulator, the scores show that the method works; they do not tell you how
+   separable. PaySim generates fraud by a simple process: with the ledger errors and the raw balances, the label
+   follows almost exactly (random forest 1.0000; a depth-2 tree on the errors alone reaches 0.4892). On a simulator, the scores show that the method works; they do not tell you how
    accurate a model would be on a real network.
 2. **Models can fail quietly.** LightGBM falls to 0.0338, about the same as the 200,000 rule (0.0283), without any
    error message. This notebook does not test why; its settings (a class weight of 482 with leaves as small as 5
@@ -2054,13 +2109,17 @@ test_steps = features.loc[~train_mask, "step"].to_numpy()
 period_rows = []
 # Score each of the four test periods
 for start, end in [(491, 560), (561, 630), (631, 700), (701, 743)]:
-    # Rows in this period, their labels and their scores
+    # True for the test rows in this period
     in_period = (test_steps >= start) & (test_steps <= end)
+    # Their labels
     truth = y_test.to_numpy()[in_period]
+    # Their XGBoost scores
     scores = xgb_scores[in_period]
-    # Flags at the fixed cut-off, and the frauds among them
+    # Flags at the fixed cut-off
     flagged_period = scores >= operating_threshold
+    # Frauds among the flags
     true_positives = (flagged_period & (truth == 1)).sum()
+    # One row of measures for this period
     period_rows.append({"hours": f"{start}-{end}",
                         "transactions": int(in_period.sum()),
                         "frauds": int(truth.sum()),
@@ -2250,7 +2309,8 @@ md("""
 Explain the highest-scoring fraud and the first honest TRANSFER of the test window.
 
 **Concept: a local explanation.** One transaction's SHAP values, added to the average, give that transaction's
-score on the model's internal log-odds scale, so they say why this one was flagged.
+score on the model's internal log-odds scale, so they say why this one was flagged. *Log-odds* are log(p / (1 - p))
+for a score p: 0 means 50%, and each +1 multiplies the odds of fraud by about 2.7.
 """)
 
 code("""
@@ -2268,8 +2328,11 @@ for explain_label, explain_row in [("fraud", fraud_row), ("honest", honest_row)]
     contributions = pd.Series(explainer.shap_values(explain_row)[0], index=MODEL_COLS)
     # The three largest pushes, by size
     top = contributions.reindex(contributions.abs().sort_values(ascending=False).index)[:3]
+    # Print the row's score
     print(f"{explain_label} transaction, score {model.predict_proba(explain_row)[0, 1]:.4f}; largest pushes:")
+    # Then each of the three pushes, with the input's value
     for push_name, push_value in top.items():
+        # One line per input
         print(f"   {push_name:18s} value {explain_row[push_name].iloc[0]:>14,.2f}   push {push_value:+.2f}")
 """)
 
@@ -2335,7 +2398,9 @@ md("""
 The sender-side error is second, as the ledger reasoning predicted, but the raw sender balance after the transfer
 (`newBalanceOrig`) matters most. That is a warning sign: almost every PaySim fraud empties the sender's account
 (Step 1.19), so "the balance went to zero" works as a shortcut. It would also flag an honest customer closing
-their own account. The shipped pipeline removes the raw balances for this reason (Step 3.6).
+their own account. The shipped pipeline removes the raw balances for this reason (Step 3.6), but the same signal
+survives in its `orig_drain_ratio`, the share of the sender's balance a transfer moves (the README's "Problems I
+hit" and `MODEL_CARD.md` show the scores).
 """)
 
 # =====================================================================
@@ -2435,6 +2500,7 @@ screens = {
 outcomes = {}
 # Count the outcome of each screen
 for name, screen_flags in screens.items():
+    # The outcome of this screen's flags
     outcomes[name] = screen_outcome(screen_flags)
 # Turn the outcomes into a table, one row per screen
 impact = pd.DataFrame.from_dict(outcomes, orient="index")
@@ -2484,6 +2550,7 @@ axes[0].set_xlabel("Share of test-window fraud value stopped (%)")
 axes[0].set_title("Fraud value stopped")
 # Write each share beside its bar
 for bar_position, bar_value in enumerate(value_share_pct):
+    # The share, just right of the bar
     axes[0].text(bar_value + 1, bar_position, f"{bar_value:.1f}%", va="center", fontsize=9)
 # Room on the right for the share labels
 axes[0].set_xlim(0, 115)
@@ -2496,6 +2563,7 @@ axes[1].set_xlabel("Honest customers frozen (false alarms)")
 axes[1].set_title("The cost: honest customers frozen")
 # Write each count beside its bar
 for bar_position, bar_value in enumerate(impact["honest customers frozen"]):
+    # The count, just right of the bar
     axes[1].text(bar_value + 2, bar_position, f"{bar_value:,}", va="center", fontsize=9)
 # Drop the repeated screen names on the right panel
 axes[1].set_yticklabels([])
@@ -2606,10 +2674,12 @@ import json
 
 # The shipped model's holdout metrics
 with open("outputs/holdout_metrics.json", encoding="utf-8") as handle:
+    # Parse the holdout file
     shipped_holdout = json.load(handle)
 
 # The shipped model's value stopped
 with open("dashboard/data/business_impact.json", encoding="utf-8") as handle:
+    # The row for the shipped model at its threshold
     shipped_impact = json.load(handle)["results"]["Model, threshold 0.8852"]
 
 # Print the holdout size
@@ -2635,9 +2705,9 @@ value, with five inputs and no raw balances. How it differs from this notebook:
 | | This notebook | Shipped pipeline (`src/`) |
 |---|---|---|
 | Inputs | 9, including the raw balances and the hour | 5: the amount, the two balance errors, and two ratios (how much of the sender's balance moved, and the amount against the recipient's balance) |
-| Raw balances | Kept, to show what they do | Removed: the model used "balance hits zero" as a shortcut |
+| Raw balances | Kept, to show what they do | Removed, because the model used "balance hits zero" as a shortcut; `orig_drain_ratio` still carries the same "account emptied" signal |
 | Settings | Library defaults, class weight 482 | Tuned on earlier windows only (35 trees, class weight 2.14) |
-| Probabilities | Raw model scores | Calibrated (isotonic) on the training hours just before the test window, so scores read as the fraud frequencies seen there |
+| Scores | Raw, class-weighted scores | Calibrated with isotonic regression (a step-shaped curve that never goes down, fitted from score to the fraud rate seen) on the training hours just before the test window, so scores read as the fraud frequencies seen there |
 | Cut-off | Chosen on the test window, for teaching | Cheapest at 1,000 units per missed fraud and 10 per false alarm (assumed), chosen on calibration hours before the test window |
 | Over time | Four test periods, cut-off fixed | Four expanding retraining windows, plus input-drift monitoring |
 
@@ -2647,8 +2717,9 @@ value, with five inputs and no raw balances. How it differs from this notebook:
    stops half the fraud value for 79 false alarms; a boosted model on the same idea stops almost all of it.
 2. **Set the cut-off from your own costs**, and restate precision at your real fraud rate before sizing the
    review queue (Step 2.15: 93.4% here, not 99%).
-3. **Do not ship the raw balances.** They let the model flag every account that is emptied, including honest
-   ones (Step 2.27).
+3. **Do not ship the raw balances, and test any ratio that measures the same drain.** They let the model flag
+   every account that is emptied, including honest ones (Step 2.27); the shipped model's `orig_drain_ratio` still
+   does.
 4. **Re-check every period.** A model can collapse silently on later data (LightGBM, Step 2.19).
 
 ### Step 3.7: Write the results file
@@ -2676,9 +2747,11 @@ from importlib.metadata import PackageNotFoundError, version
 
 # A function that runs one git command and returns what it printed
 def git(*args):
+    # Ask git
     try:
-        # Run git and return what it printed
+        # Run git and capture what it printed
         result = subprocess.run(["git", *args], capture_output=True, text=True, check=True)
+        # Hand back what it printed, without the trailing newline
         return result.stdout.strip()
     except Exception:
         # git is not installed, or this folder is not a git repository
@@ -2699,8 +2772,10 @@ code("""
 changed_files = git("status", "--porcelain", "--", ".", ":(exclude)*.ipynb", ":(exclude)figs", ":(exclude)outputs")
 # True when code changed since the commit; None when git is missing
 if changed_files is None:
+    # git is missing, so the answer is unknown
     uncommitted_code_changes = None
 else:
+    # True if any code file changed
     uncommitted_code_changes = len(changed_files) > 0
 
 # The version of each library that produced the numbers
@@ -2709,9 +2784,12 @@ package_names = ["numpy", "pandas", "scikit-learn", "xgboost", "lightgbm", "imba
 package_versions = {}
 # Look up each library's version
 for package_name in package_names:
+    # Ask the installed package for its version
     try:
+        # Record the version
         package_versions[package_name] = version(package_name)
     except PackageNotFoundError:
+        # The package is not installed
         package_versions[package_name] = None
 
 # Date, run time, commit, clean or not, Python and packages
@@ -2736,22 +2814,28 @@ code("""
 model_metrics = {}
 # Copy every metric as a plain float
 for model_name in results:
+    # An empty entry for this model
     model_metrics[model_name] = {}
+    # Copy each of its metrics
     for metric_name, value in results[model_name].items():
+        # as a plain float
         model_metrics[model_name][metric_name] = float(value)
 
 # An empty dictionary for the mean |SHAP| per input
 shap_mean_abs = {}
 # Copy each input's importance as a plain float
 for feature_name, value in importance.items():
+    # The importance as a plain float
     shap_mean_abs[feature_name] = float(value)
 
 
 # A function JSON uses for numpy numbers it cannot write itself
 def to_json_value(value):
-    # numpy numbers have .item() to turn them into plain Python numbers; anything else is written as text
+    # Does the value have numpy's .item()?
     if hasattr(value, "item"):
+        # Then it becomes a plain Python number
         return value.item()
+    # Anything else is written as text
     return str(value)
 
 
@@ -2803,6 +2887,7 @@ notebook_results = {
 
 # Write the results file
 with open("outputs/notebook_results.json", "w", encoding="utf-8") as f:
+    # Write the dictionary as indented JSON
     json.dump(notebook_results, f, indent=2, default=to_json_value)
 # Confirm the file was written
 print("Wrote outputs/notebook_results.json with", len(notebook_results), "sections")
@@ -2812,6 +2897,7 @@ code("""
 # Check your work
 # Read the file back
 with open("outputs/notebook_results.json", encoding="utf-8") as handle:
+    # Parse the written file
     written = json.load(handle)
 # It holds the test-window fraud count
 assert written["split"]["test_frauds"] == 2_754, "the results file should hold the test-window fraud count"
@@ -2836,8 +2922,8 @@ md("""
 
 ## Limitations
 
-- **PaySim is a simulator, and no real operator's data was used.** Once the ledger errors exist, its fraud labels follow from them almost exactly,
-  which is why a random forest reaches PR-AUC 1.0000. The scores show that the method works; they say nothing
+- **PaySim is a simulator, and no real operator's data was used.** With the ledger errors and the raw balances, its fraud labels follow almost
+  exactly, which is why a random forest reaches PR-AUC 1.0000. The scores show that the method works; they say nothing
   about the accuracy to expect on a real network.
 - **One fraud signature.** 97.82% of simulated frauds drain the sender's whole balance. Partial-skim fraud, where
   only part of a balance is taken, is barely represented and would not be detected.
@@ -2856,7 +2942,7 @@ md("""
 
 ## Next steps
 
-1. Remove `oldBalanceOrig` and `newBalanceOrig` from `MODEL_COLS`, re-run from Step 1.27, and compare XGBoost's
+1. Remove `oldBalanceOrig` and `newBalanceOrig` from `MODEL_COLS`, re-run from Step 1.26, and compare XGBoost's
    PR-AUC and the SHAP chart with the version above.
 2. Change `SPLIT_STEP` to 600 in Step 1.2. How do the training fraud rate and the test results change?
 3. In Step 2.15, set `real_fraud_rate` to 0.005 and to 0.0005. How does precision move, and what does that mean
