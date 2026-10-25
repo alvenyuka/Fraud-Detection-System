@@ -96,8 +96,9 @@ Each step adds one idea.
    ![Correlation heatmaps of the balance fields and the two error columns, for honest and fraud transactions](figs/balance_fingerprint.png)
 
    *Drawn by the notebook from its own error columns (balance change minus amount). In honest transactions the
-   sender error moves with the amount (correlation 0.99), because many honest senders' balances are not
-   recorded; in fraud it barely does (0.09), because fraud debits the sender exactly. Fraud shows on the
+   sender error moves with the amount (correlation 0.99), because most honest senders whose balance is recorded
+   send more than that balance, so the gap grows with the amount (unrecorded senders are left out of this
+   correlation); in fraud it barely does (0.09), because fraud debits the sender exactly. Fraud shows on the
    recipient side instead (0.65). The shipped features measure the same kind of gap.*
 
 4. **Split by time, not at random.** I train on hours 1 to 490 (steps 1 to 392 fit the model, 393 to 490 calibrate it) and test on 491 to 743 (`src/config.py`,
