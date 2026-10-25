@@ -1,8 +1,8 @@
 {
   "provenance": {
-    "run_date_utc": "2026-10-19",
-    "runtime_minutes": 36,
-    "git_commit": "fce6ce56a23cdb5155cf3a6079b11cec9fb18463",
+    "run_date_utc": "2026-10-25",
+    "runtime_minutes": 19,
+    "git_commit": "f38612846c3180c7307311046d3368d3f30c0eb0",
     "uncommitted_code_changes": false,
     "python": "3.13.9",
     "packages": {
