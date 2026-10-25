@@ -87,7 +87,7 @@ Each step adds one idea.
 
 3. **Features from bookkeeping.** A feature is a number the model gets to look at. A clean transfer obeys an
    accounting rule: the sender's balance falls by exactly the amount, and the recipient's rises by exactly the
-   amount. Fraud often breaks it. `src/features.py` builds five numbers: the amount, how far the sender's
+   amount. In PaySim fraud breaks it on the recipient's side: what was taken does not arrive. `src/features.py` builds five numbers: the amount, how far the sender's
    balances miss the rule (`orig_balance_discrepancy`), how far the recipient's miss it
    (`dest_balance_discrepancy`), the share of the sender's balance the transfer moves (`orig_drain_ratio`),
    and the amount relative to the recipient's balance (`dest_amount_ratio`). The raw balance columns are left
@@ -96,8 +96,9 @@ Each step adds one idea.
    ![Correlation heatmaps of the balance fields and the two error columns, for honest and fraud transactions](figs/balance_fingerprint.png)
 
    *Drawn by the notebook from its own error columns (balance change minus amount). In honest transactions the
-   sender error tracks the amount (correlation 0.99); in fraud it barely does (0.09). The shipped features
-   measure the same kind of gap.*
+   sender error moves with the amount (correlation 0.99), because many honest senders' balances are not
+   recorded; in fraud it barely does (0.09), because fraud debits the sender exactly. Fraud shows on the
+   recipient side instead (0.65). The shipped features measure the same kind of gap.*
 
 4. **Split by time, not at random.** I train on hours 1 to 490 (steps 1 to 392 fit the model, 393 to 490 calibrate it) and test on 491 to 743 (`src/config.py`,
    `time_based_split` in `src/train.py`). Fraud patterns change over time, and a random split would let the

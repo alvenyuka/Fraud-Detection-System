@@ -278,7 +278,8 @@ def expected_numbers():
     seq += [result(str(builtin["frauds_caught"])), count(frauds), result(builtin_share)]
     # Step 3: the balance fingerprint caption
     seq += [from_figure("0.99", "figs/balance_fingerprint.png", "honest: amount against the sender error"),
-            from_figure("0.09", "figs/balance_fingerprint.png", "fraud: amount against the sender error")]
+            from_figure("0.09", "figs/balance_fingerprint.png", "fraud: amount against the sender error"),
+            from_figure("0.65", "figs/balance_fingerprint.png", "fraud: amount against the recipient error")]
     # Step 4: the time split
     seq += [fixed("1", "first hour"), split_step, fixed("1", "first hour"), fit_end, calibration_start, split_step,
             result(str(int(split_step) + 1)), last_hour]
