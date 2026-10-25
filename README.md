@@ -210,7 +210,7 @@ Python 3.12 or later. Main libraries: pandas, XGBoost, scikit-learn, Optuna, SHA
 
 ```bash
 pip install -r requirements.txt   # exact pins; requirements-lock.txt pins everything
-make test        # 79 tests, no dataset needed
+make test        # 73 tests, no dataset needed
 # download PaySim from Kaggle into data/, then:
 make tune        # 40 Optuna trials; the recorded run took 4 hours on a shared machine
 make train       # train, save model/xgb_fraud_model.pkl and print the holdout metrics, about a minute
@@ -230,7 +230,7 @@ src/            features, tuning, training, walk-forward validation, monitoring,
 api/score.py    standard-library port of the model behind the live demo
 dashboard/      Streamlit dashboard and the precomputed results it reads
 model/          trained model, tuned settings, JSON export
-tests/          79 tests: time split, the two fixed leaks, accounting identity, threshold, PSI, API, port parity
+tests/          73 tests: time split, the two fixed leaks, accounting identity, threshold, PSI, API, port parity
 MODEL_CARD.md   intended use, evaluation, limitations
 docs/           METHODOLOGY.md: tuning, walk-forward details, drift findings
 Fraud_Detection_System.ipynb   data exploration and model comparison; its scores come from its own
