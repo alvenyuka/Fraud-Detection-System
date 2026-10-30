@@ -27,8 +27,10 @@ The notebook becomes a guided build a newcomer can follow cell by cell. No model
   cause; the balance fingerprint is read the right way round; both notebooks' costs are named as assumptions;
   PSI, walk-forward validation and calibration are explained and added to the glossary; a limitation notes the
   notebook's model is tested on one later window without retraining.
-- The notebook was executed on the full PaySim file at commit f386128 in 19 minutes; the run record names
-  that commit with no uncommitted code.
+- The notebook was executed on the full PaySim file at commit 527a0b0 in 30 minutes; the run record names
+  that commit with no uncommitted code. (Rebuilt and re-executed again 2026-10-30 after this entry's code
+  changes landed without a matching run; the run record now matches what build_notebook.py at this commit
+  actually produces.)
 - Second review: the honest 0.99 fingerprint correlation is explained by honest senders with a recorded balance
   who send more than it (a new step prints and checks that share); the tree's sender rule is said to pass
   unrecorded senders too; `orig_drain_ratio` is named as still carrying the "account emptied" signal; the label
