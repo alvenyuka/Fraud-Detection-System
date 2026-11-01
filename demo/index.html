@@ -6,19 +6,19 @@
 <title>Fraud Detection System | Alven Yuka</title>
 <meta name="description" content="Mobile-money fraud detection evaluated the way a risk team would: a time-based holdout, walk-forward validation, a cost-based threshold, and a live scoring demo of the shipped model. It stops 99.98% of holdout fraud value at 99.9% precision.">
 <meta name="theme-color" content="#ffffff">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2304040a'/%3E%3Ccircle cx='32' cy='32' r='12' fill='%23e8ff47'/%3E%3C/svg%3E">
-<link rel="preconnect" href="https://api.fontshare.com" crossorigin>
-<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=clash-display@500,600&f[]=cabinet-grotesk@400,500,700&display=swap">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23152238'/%3E%3Ctext x='30' y='42' font-family='Arial,Helvetica,sans-serif' font-weight='700' font-size='28' fill='%23f3f5fa' text-anchor='middle'%3EAY%3C/text%3E%3Ccircle cx='52' cy='18' r='5' fill='%23c2410c'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
-:root{--bg:#f5f6f2;--bg-2:#eceee7;--card:#ffffff;--fg:#12161f;--fg-2:#353d4a;--muted:#586273;--faint:#6f7987;--border:rgba(18,22,31,.10);--border-strong:rgba(18,22,31,.20);--lime:#d9f23a;--lime-line:#9fbc00;--lime-dim:rgba(159,188,0,.18);--on-lime:#12161f;--accent:#3d5a00;--orange:#c2410c;--font:"Cabinet Grotesk",system-ui,sans-serif;--display:"Clash Display","Cabinet Grotesk",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,Consolas,monospace;color-scheme:light}
+:root{--bg:#f5f6f2;--bg-2:#eceee7;--card:#ffffff;--fg:#12161f;--fg-2:#353d4a;--muted:#586273;--faint:#6f7987;--border:rgba(18,22,31,.10);--border-strong:rgba(18,22,31,.20);--accent-fill:#c2410c;--accent-line:#c2410c;--accent-dim:rgba(194,65,12,.18);--on-accent:#ffffff;--accent:#2c4066;--orange:#c2410c;--font:"Inter",system-ui,sans-serif;--display:"Fraunces","Inter",system-ui,serif;--mono:"JetBrains Mono",ui-monospace,Consolas,monospace;color-scheme:light}
 *,*::before,*::after{box-sizing:border-box}
 html{scroll-behavior:smooth;scroll-padding-top:4.5rem}
 body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);font-size:1.0625rem;line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
 a{color:inherit;text-decoration-color:var(--border-strong);text-underline-offset:.16em}
 a:hover{text-decoration-color:currentColor}
 :focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
-::selection{background:var(--lime);color:var(--on-lime)}
+::selection{background:var(--accent-fill);color:var(--on-accent)}
 h1,h2,h3{margin:0;font-weight:500;line-height:1.15;text-wrap:balance}
 p{margin:0}
 ul,ol{margin:0;padding:0;list-style:none}
@@ -29,17 +29,17 @@ code{font-family:var(--mono);font-size:.82em;color:var(--fg-2);background:rgba(1
 .top{position:sticky;top:0;z-index:40;background:rgba(245,246,242,.86);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--border)}
 .top-row{display:flex;align-items:center;gap:1.5rem;height:4rem}
 .brand{display:inline-flex;align-items:center;gap:.4rem;font-family:var(--display);font-weight:600;font-size:1.125rem;text-decoration:none}
-.brand .dot{width:.4rem;height:.4rem;border-radius:50%;background:var(--lime)}
+.brand .dot{width:.4rem;height:.4rem;border-radius:50%;background:var(--accent-line)}
 .nav{display:flex;gap:1.5rem;margin-inline:auto;font-size:.9375rem;color:var(--muted)}
 .nav a{text-decoration:none}.nav a:hover{color:var(--fg)}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;padding:.85rem 1.5rem;border-radius:999px;font-weight:500;font-size:1rem;text-decoration:none;border:1px solid transparent;cursor:pointer;font-family:inherit;transition:background-color .15s,border-color .15s,color .15s}
 .btn-sm{padding:.55rem 1.1rem;font-size:.9rem}
-.btn-lime{background:var(--lime);color:var(--on-lime);font-weight:600}.btn-lime:hover{background:#cbe62a}
+.btn-primary{background:var(--accent-fill);color:var(--on-accent);font-weight:600}.btn-primary:hover{background:#a8380a}
 .btn-outline{border-color:var(--border-strong);color:var(--fg);background:transparent}.btn-outline:hover{border-color:var(--fg);background:rgba(18,22,31,.04)}
 .nav-cta{margin-left:auto;border-color:var(--orange);color:var(--orange)}.nav-cta:hover{background:rgba(194,65,12,.1);border-color:var(--orange);color:var(--orange)}
 .pill{display:inline-flex;align-items:center;gap:.55rem;padding:.4rem .9rem;border-radius:999px;border:1px solid var(--border-strong);background:rgba(18,22,31,.03);font-family:var(--mono);font-size:.75rem;color:var(--fg-2)}
-.pulse{width:.45rem;height:.45rem;border-radius:50%;background:var(--lime);animation:pulse 2s ease-out infinite;flex:none}
-@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(159,188,0,.5)}70%{box-shadow:0 0 0 8px rgba(159,188,0,0)}100%{box-shadow:0 0 0 0 rgba(159,188,0,0)}}
+.pulse{width:.45rem;height:.45rem;border-radius:50%;background:var(--accent-line);animation:pulse 2s ease-out infinite;flex:none}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(194,65,12,.5)}70%{box-shadow:0 0 0 8px rgba(194,65,12,0)}100%{box-shadow:0 0 0 0 rgba(194,65,12,0)}}
 .hero{position:relative;overflow:hidden}
 .grid-bg{position:absolute;inset:0;pointer-events:none;background-image:linear-gradient(rgba(18,22,31,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(18,22,31,.03) 1px,transparent 1px);background-size:64px 64px;-webkit-mask-image:radial-gradient(ellipse 85% 80% at 50% 40%,#000 30%,transparent 100%);mask-image:radial-gradient(ellipse 85% 80% at 50% 40%,#000 30%,transparent 100%)}
 .hero::before{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 60% 50% at 75% 30%,rgba(217,242,58,.30),transparent 70%)}
@@ -70,9 +70,9 @@ code{font-family:var(--mono);font-size:.82em;color:var(--fg-2);background:rgba(1
 .presets button:hover{border-color:var(--fg)}
 .result{border-left:2px solid var(--border-strong);padding-left:1.5rem;min-height:12rem}
 .result .prob{font-family:var(--display);font-size:clamp(2.6rem,1.5rem + 3vw,4.2rem);line-height:1;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
-.result .prob.bad{color:var(--orange)}.result .prob.good{color:var(--accent)}
+.result .prob.bad{color:var(--fg-2)}.result .prob.good{color:var(--accent-fill)}
 .result .flag{display:inline-block;margin-top:.9rem;padding:.4rem .9rem;border-radius:999px;font-family:var(--mono);font-size:.75rem}
-.flag.bad{background:rgba(194,65,12,.14);color:var(--orange)}.flag.good{background:var(--lime-dim);color:var(--accent)}
+.flag.bad{background:rgba(21,34,56,.07);color:var(--fg-2)}.flag.good{background:var(--accent-dim);color:var(--fg)}
 .result dl{display:grid;grid-template-columns:1fr auto;gap:.4rem 1.5rem;margin:1.25rem 0 0;font-size:.9375rem}
 .result dt{color:var(--muted)}.result dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
 .note{margin-top:1rem;font-size:.85rem;color:var(--faint);line-height:1.5}
@@ -81,7 +81,7 @@ code{font-family:var(--mono);font-size:.82em;color:var(--fg-2);background:rgba(1
 .placeholder{color:var(--faint);font-size:.9375rem;padding-top:.5rem}
 .steps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
 .step{display:grid;grid-template-columns:2.25rem 1fr;gap:1rem;align-items:start}
-.step .n{font-family:var(--mono);font-size:.78rem;color:var(--accent);padding-top:.35rem}
+.step .n{font-family:var(--mono);font-size:.78rem;color:var(--accent-fill);padding-top:.35rem}
 .step h3{font-family:var(--display);font-size:1.15rem}
 .step p{margin-top:.35rem;color:var(--fg-2);font-size:.9375rem}
 .gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.25rem;margin-top:1.25rem}
@@ -90,7 +90,7 @@ code{font-family:var(--mono);font-size:.82em;color:var(--fg-2);background:rgba(1
 .gallery figcaption{margin-top:.75rem;font-family:var(--mono);font-size:.72rem;color:var(--muted)}
 .limits li{position:relative;padding-left:1.2rem;color:var(--fg-2);font-size:.9875rem}
 .limits li+li{margin-top:.75rem}
-.limits li::before{content:"";position:absolute;left:0;top:.72em;width:.4rem;height:.4rem;border-radius:50%;background:var(--lime)}
+.limits li::before{content:"";position:absolute;left:0;top:.72em;width:.4rem;height:.4rem;border-radius:50%;background:var(--accent-fill)}
 .limits strong{color:var(--fg);font-weight:600}
 .chips{display:flex;flex-wrap:wrap;gap:.5rem}
 .chips li{padding:.45rem .85rem;border:1px solid var(--border-strong);border-radius:999px;font-size:.875rem;color:var(--fg-2);background:rgba(18,22,31,.02)}
@@ -103,10 +103,11 @@ tr.hl td{color:var(--accent);font-weight:600}
 @media (max-width:900px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.section-head,.grid2,.scorer,.steps,.gallery{grid-template-columns:1fr}.nav{display:none}.result{border-left:0;padding-left:0;border-top:1px solid var(--border);padding-top:1.25rem;min-height:0}}
 @media (max-width:640px){.fields{grid-template-columns:1fr}.btn{width:100%}.nav-cta{width:auto}}
 @media (prefers-reduced-motion:reduce){.pulse{animation:none}html{scroll-behavior:auto}}
-/* Bright theme, 2026-10-18: white page, charcoal ink, no hero grid or glow, larger and darker small text. */
+/* Navy/warm-gray/orange theme, 2026-10-31 (matches the personal site): warm paper page, deep-navy ink,
+   orange as the one fills accent; no hero grid or glow. */
 body{font-weight:500}
-:root{--bg:#ffffff;--bg-2:#f6f7f3;--card:#ffffff;--fg:#1d222b;--fg-2:#323944;--muted:#4a5361;--faint:#5a6372;--border:rgba(29,34,43,.11);--border-strong:rgba(29,34,43,.20)}
-.top{background:rgba(255,255,255,.9)}
+:root{--bg:#f8f7f4;--bg-2:#eef1f6;--card:#ffffff;--fg:#152238;--fg-2:#2c4066;--muted:#6b6459;--faint:#847c6e;--border:rgba(21,34,56,.11);--border-strong:rgba(21,34,56,.20)}
+.top{background:rgba(255,255,255,.92)}
 .grid-bg,.hero::before{display:none}
 .hero h1{font-size:clamp(2.2rem,1rem + 4.2vw,4.4rem);color:var(--fg)}
 .section-head h2{font-size:clamp(1.75rem,1.1rem + 2.2vw,3rem)}
@@ -132,7 +133,7 @@ th{color:var(--muted)}
   <p class="pill"><span class="pulse" aria-hidden="true"></span>Live model · the form below scores with the shipped XGBoost export</p>
   <h1 class="display">Fraud stopped before the money leaves.</h1>
   <p class="lede">A classifier for mobile-money transfers, trained on 6.36 million simulated PaySim transactions and evaluated the way a fraud-operations team would: hyperparameters tuned only on earlier data, a strict time-based holdout, walk-forward validation across four later windows, calibrated probabilities and a threshold chosen from the cost of each kind of mistake. The result is stated in money and in honest customers frozen.</p>
-  <div class="actions"><a class="btn btn-lime" href="#score">Score a transaction</a><a class="btn btn-outline" href="https://github.com/alvenyuka/Fraud-Detection-System#reproduce" target="_blank" rel="noopener">Reproduce it</a></div>
+  <div class="actions"><a class="btn btn-primary" href="#score">Score a transaction</a><a class="btn btn-outline" href="https://github.com/alvenyuka/Fraud-Detection-System#reproduce" target="_blank" rel="noopener">Reproduce it</a></div>
   <div class="stats">
     <div class="stat"><span class="v">99.98%</span><span class="k">of holdout fraud value stopped (built-in flag: 1.1%)</span></div>
     <div class="stat"><span class="v">2,742 / 2,754</span><span class="k">frauds caught, 99.6% recall</span></div>
@@ -159,7 +160,7 @@ th{color:var(--muted)}
         <button type="button" data-preset="2500,48000,45500,12000,14500">everyday transfer</button>
         <button type="button" data-preset="950000,950000,0,120000,1070000">full drain, recipient credited</button>
       </div>
-      <div class="actions"><button id="score-btn" class="btn btn-lime" type="button">Score this transaction</button></div>
+      <div class="actions"><button id="score-btn" class="btn btn-primary" type="button">Score this transaction</button></div>
       <p class="note">Amounts are in PaySim's simulated currency units. The model sees the amount and four features derived from these five fields.</p>
     </div>
     <div class="result" id="result" aria-live="polite">
