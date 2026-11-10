@@ -1,18 +1,45 @@
 # Mobile-Money Fraud Detection
 
-A model that flags fraudulent mobile-money transfers so a fraud team can freeze them, built and tested on 6.36 million simulated transactions.
+A model that flags a mobile-money transfer as fraud right after it posts, so a fraud team can act on it —
+seizing a `TRANSFER`'s funds before cash-out, or flagging a `CASH_OUT` for recovery once the cash is already
+gone (see "What this project does"). Built and tested on 6.36 million simulated transactions.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
 [![tests](https://github.com/alvenyuka/Fraud-Detection-System/actions/workflows/ci.yml/badge.svg)](https://github.com/alvenyuka/Fraud-Detection-System/actions/workflows/ci.yml)
 
-![Bar chart of the share of fraud value stopped on the holdout by each screening method: the simulator's built-in flag stops 1.1%, the model 99.98%](figures/fraud_value_stopped.png)
+![Bar chart of the share of fraud value frozen on the holdout by each screening method: the simulator's built-in flag catches 1.1%, the model 99.98%](figures/fraud_value_stopped.png)
 
 ## What this project does
 
-In mobile money, a fraud flag usually freezes the customer's funds. A false alarm locks a legitimate person out of
-their own money. A missed fraud is a direct loss. So the question is: how much fraud can a model stop, how many
-legitimate transfers does it freeze to do that, and does it keep working as time passes?
+In mobile money, a fraud flag freezes funds immediately after a transfer posts. A false alarm locks a
+legitimate person out of their own money. A missed fraud is a direct loss. So the question is: how much fraud
+value can a model catch the moment it posts, how many legitimate transfers does it freeze to do that, and does
+it keep working as time passes?
+
+**Timing matters here: this is a post-posting check, not a pre-authorization gate.** The model's single largest
+feature, `orig_balance_discrepancy` (51.8% of attribution — see step 10 below), plus `dest_balance_discrepancy`
+(3.9%) — 55.7% combined — are built from the sender's and recipient's balances *after* the transfer has already
+posted, because PaySim only records those once the ledger updates. (`orig_drain_ratio`, 25.1%, actually needs
+only pre-transfer figures — the amount against the sender's starting balance — but it is trained and shipped as
+part of this one model, not run on its own as a separate pre-authorization check.) So the model as shipped can
+only run once a transfer has posted, not before it is authorised: it cannot block a transfer, only act on one
+that already happened.
+
+**"Acting on it" means something different depending on the transaction type, and for `TRANSFER` that's an
+assumption, not something this data shows.** A fraudulent `TRANSFER` is the case for seizing the funds before
+the recipient cashes out — but every fraud `TRANSFER` row in the holdout shows the destination balance at 0
+both before and after, and no fraud `TRANSFER` and fraud `CASH_OUT` in the holdout share an account
+(`src/business_impact.py`'s `dest_balance_always_zero` and `linked_transfer_cashout_accounts`), so there is no
+linked transfer-then-cash-out case in the holdout to point to.
+"Freeze before cash-out" is the operational use the flag is built for, not a result demonstrated here. A
+fraudulent `CASH_OUT` is more clear-cut (the scored row *is* the withdrawal): the cash has already left by the
+time the model could score it, so the useful action is flagging it for recovery or investigation, not
+preventing something that already happened. The two types split the test-window fraud almost exactly evenly —
+1,377 `TRANSFER` and 1,377 `CASH_OUT` frauds, 50.6% / 49.4% of the value (`src/business_impact.py`'s
+`fraud_by_type`, in `dashboard/data/business_impact.json`) — but the business-impact table below does not
+split by type, so read "frozen" there as "flagged, funds assumed reachable" for the `TRANSFER` half and
+"flagged for recovery" for the `CASH_OUT` half.
 
 The data is PaySim, a public simulator built from the logs of a mobile-money service in Africa: 6,362,620
 transactions over 743 simulated hours (about 31 days). It is simulated data, not customer transactions.
@@ -31,15 +58,19 @@ unproven.** PaySim's fraud follows a few fixed patterns, which a model can learn
 - **It caught 2,742 of the 2,754 frauds (recall 99.6%).** Recall is the share of frauds the model flags.
 - **It froze 3 honest transfers (precision 99.9%).** Precision is the share of flags that were real fraud. The
   holdout is fraud-heavy; at the whole simulation's lower fraud rate precision would be about 99.2% (Limits).
-- **It stopped 99.98% of the fraud value**, against 1.1% for the simulator's own built-in flag.
+- **It froze 99.98% of the fraud value immediately after it posted** (assumed reachable before cash-out for
+  the `TRANSFER` half, flagged for recovery for the `CASH_OUT` half — see "What this project does"), against
+  1.1% for the simulator's own built-in flag.
 - **It held up over time: walk-forward PR-AUC 0.9971.** Walk-forward means retraining and re-testing on four
   successive later windows (step 8). It differs from 0.9984 because it averages four separate models on different
   test windows, not the one holdout. Precision averaged 96.9% over those windows and fell to 88.1% in the last. The
   ranking stayed good; the cut-off score that decides "flag or not" did not hold steady.
 - **Live demo:** [fraud-detection-alven.vercel.app](https://fraud-detection-alven.vercel.app). Type in a transfer's
-  amount and the sender and recipient balances before and after, and `api/score.py` returns the fraud probability and
-  whether it is above the flag line. It runs the same model, ported to plain Python. Use it to poke at the model, not
-  as fraud detection: see step 10 and Limits for how sensitive it is to the sender's balances.
+  amount and the sender and recipient balances before and after — the "after" balances are required because the
+  model only runs once they exist, which is the post-posting timing described above — and `api/score.py` returns
+  the fraud probability and whether it is above the flag line. It runs the same model, ported to plain Python.
+  Use it to poke at the model, not as fraud detection: see step 10 and Limits for how sensitive it is to the
+  sender's balances.
 
 | Measure on the holdout | Value | What it means |
 |---|---:|---|
@@ -55,9 +86,12 @@ The holdout rows come from the metrics `src/train.py` stores inside `model/xgb_f
 walk-forward rows come from `dashboard/data/walk_forward_results.csv` (`make validate`).
 
 Money on the same holdout, from `src/business_impact.py` (amounts are PaySim's simulated currency units, and a
-fraud's value is its transaction amount):
+fraud's value is its transaction amount; "stopped" in the script's own output means frozen immediately after
+posting, per the timing note above, not prevented from posting — and means "flagged for recovery" rather than
+"assumed reachable before cash-out" for the `CASH_OUT` half of that value, since those rows are the cash-out
+itself):
 
-| Screening | Fraud value stopped | Fraud value let through | Honest transfers frozen |
+| Screening | Fraud value frozen | Fraud value let through | Honest transfers frozen |
 |---|---:|---:|---:|
 | None | 0 | 4.19 bn | 0 |
 | PaySim's built-in `isFlaggedFraud` flag | 46.5 M (1.1%) | 4.14 bn | 0 |
@@ -82,7 +116,7 @@ Each step adds one idea.
    *Fraud appears only in TRANSFER and CASH_OUT, so the other three types are dropped.*
 
 2. **A baseline: the simulator's own flag.** PaySim ships a rule-based flag, `isFlaggedFraud`. On the holdout it
-   caught 10 of 2,754 frauds and stopped 1.1% of the fraud value (`src/business_impact.py`). Any model has to
+   caught 10 of 2,754 frauds and froze 1.1% of the fraud value (`src/business_impact.py`). Any model has to
    beat this.
 
 3. **Features from bookkeeping.** A feature is a number the model gets to look at. A clean transfer obeys an
@@ -190,6 +224,13 @@ committed; download it into `data/`.
 
 ## Limits
 
+- **This is a post-posting check, not a pre-authorization block.** The largest feature needs the posted
+  sender/recipient balances, which only exist once the transfer has gone through (see "What this project
+  does" for the exact split). It cannot prevent a transfer from completing; "freeze before cash-out" for a
+  `TRANSFER` is the operational use the flag is meant for, not something this data demonstrates (see "What
+  this project does"), and for a `CASH_OUT` — 49.4% of the fraud value — the cash is already gone and the
+  useful action is recovery, not prevention. A system that must block the transfer itself before it posts
+  would need a different feature set (amount, pre-transfer balances, type) and a separately validated model.
 - **PaySim is a simulator, and no real operator's data was used.** Once these features exist its fraud is nearly
   deterministic, which is why the scores are so high. In the notebook a random forest reaches a PR-AUC of 1.0000.
   The method (time split, cost-based threshold, walk-forward checks, drift monitoring) can be reused on real

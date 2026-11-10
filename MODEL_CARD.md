@@ -44,15 +44,23 @@ subsample 0.60, colsample_bytree 0.81, min_child_weight 8, gamma 1.67, scale_pos
 
 ### Primary use case
 
-Flagging fraudulent `TRANSFER` and `CASH_OUT` transactions in mobile-money systems similar to the PaySim simulation.
+Flagging `TRANSFER` and `CASH_OUT` transactions as fraud immediately after they post, in mobile-money systems
+similar to the PaySim simulation, so a fraud team can act on them — seizing the funds before cash-out for a
+`TRANSFER` (an assumed operational step this data doesn't itself demonstrate), or flagging for recovery for a
+`CASH_OUT`, since that row is itself the withdrawal (see README "What this project does" for the exact
+1,377 / 1,377, 50.6% / 49.4% split). The model's largest feature needs the posted sender/recipient balances, so it
+runs after the transfer completes, not before.
 
 ### Intended users
 
-- Risk analytics teams building fraud alerting systems
+- Risk analytics teams building post-posting fraud alerting systems
 - Data scientists benchmarking fraud detection approaches
 
 ### Out-of-scope uses
 
+- **Pre-authorization blocking.** This model cannot decide whether to let a transfer post in the first place —
+  its largest feature doesn't exist until after it does. Blocking transfers before they post needs a different
+  feature set (amount, pre-transfer balances, type) and a separately trained and validated model.
 - **Real production deployment without retraining.** PaySim is a simulator; a production system must be retrained on real transaction data with proper data governance.
 - **Transaction types other than TRANSFER and CASH_OUT.** Fraud in PaySim occurs exclusively in these two types; the model is undefined on `CASH_IN`, `DEBIT`, `PAYMENT`.
 - **Financial decisions without human review.** The model flags; a human or rules engine should adjudicate.

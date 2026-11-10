@@ -50,6 +50,7 @@ HOLDOUT = read_json("outputs/holdout_metrics.json")
 IMPACT_FILE = read_json("dashboard/data/business_impact.json")
 IMPACT = IMPACT_FILE["results"]
 AT_REAL_RATE = IMPACT_FILE["precision_at_real_fraud_rate"]
+TYPE_SPLIT = IMPACT_FILE["fraud_by_type"]
 SUMMARY = read_json("dashboard/data/metrics_summary.json")
 SHARES = read_json("dashboard/data/feature_importance.json")
 SCENARIOS = read_json("dashboard/data/scenario_table.json")
@@ -211,6 +212,8 @@ def expected_numbers():
     full_drain = SCENARIOS["drain_sweep"][-1]
     near_drain = SCENARIOS["drain_sweep"][-2]
     assert full_drain["drain_share"] == 1.0 and near_drain["drain_share"] == 0.99
+    assert TYPE_SPLIT["TRANSFER"]["dest_balance_always_zero"] is True
+    assert IMPACT_FILE["linked_transfer_cashout_accounts"] == 0
     psi = psi_in_last_window()
 
     caught = HOLDOUT["frauds_caught"]
@@ -229,6 +232,10 @@ def expected_numbers():
     walk_pr_auc = f"{SUMMARY['PR-AUC']['mean']:.4f}"
     value_share = pct(model_row["share_of_fraud_value_stopped"], 2)
     builtin_share = pct(builtin["share_of_fraud_value_stopped"])
+    transfer_frauds = count(TYPE_SPLIT["TRANSFER"]["frauds"])
+    cashout_frauds = count(TYPE_SPLIT["CASH_OUT"]["frauds"])
+    transfer_value_share = pct(TYPE_SPLIT["TRANSFER"]["share_of_fraud_value"])
+    cashout_value_share = pct(TYPE_SPLIT["CASH_OUT"]["share_of_fraud_value"])
     last_precision = pct(folds[-1]["Precision"])
     miss_cost = setting(f"{features.COST_PER_MISSED_FRAUD:,}")
     alarm_cost = setting(f"{features.COST_PER_FALSE_ALARM:,}")
@@ -243,7 +250,14 @@ def expected_numbers():
     seq += [result(f"{data['transactions'] / 1e6:.2f}")]
     seq += [fixed("3.12", "Python version badge")]
     seq += [result(builtin_share), result(value_share)]
-    # What this project does
+    # What this project does: the post-posting timing note (same SHAP shares as Step 10, 1 decimal place here)
+    seq += [result(f"{SHARES[0]['importance_pct']:.1f}"), fixed("10", "step number"),
+            result(f"{SHARES[4]['importance_pct']:.1f}"),
+            result(f"{SHARES[0]['importance_pct'] + SHARES[4]['importance_pct']:.1f}"),
+            result(f"{SHARES[1]['importance_pct']:.1f}")]
+    # What this project does: the TRANSFER/CASH_OUT split, from business_impact.json's fraud_by_type
+    seq += [fixed("0", "TRANSFER fraud rows' destination balance, verified zero both before and after")]
+    seq += [transfer_frauds, cashout_frauds, transfer_value_share, cashout_value_share]
     seq += [rows, last_hour, result(f"{folds[-1]['test_end_step'] / 24:.0f}")]
     # Results: the windows, then the bullets
     seq += [fixed("1", "first hour"), fit_end, calibration_start, split_step, fixed("6", "step number")]
@@ -359,6 +373,7 @@ def expected_numbers():
     seq += [fixed("2016", "year of the PaySim paper"), rows, last_hour]
     seq += [result(pct(data["fraud_rate"], 2)), rows, result(train_rate), result(test_rate), holdout_rows]
     # Limits
+    seq += [cashout_value_share]
     seq += [result(f"{NOTEBOOK_RESULTS['models']['Random forest']['PR-AUC']:.4f}")]
     seq += [result(f"{SCENARIOS['partial_skim']['fraud_probability'] * 100:.0f}")]
     seq += [result(test_rate), result(pct(AT_REAL_RATE["fraud_rate"], 2))]
@@ -460,7 +475,7 @@ def test_headline_sentences():
     assert f"**Ranking quality: PR-AUC {HOLDOUT['pr_auc']:.4f}.**" in README
     assert f"**It caught {caught:,} of the {frauds:,} frauds (recall {recall:.1%}).**" in README
     assert f"**It froze {HOLDOUT['false_alarms']} honest transfers (precision {precision:.1%}).**" in README
-    assert f"**It stopped {model_row['share_of_fraud_value_stopped']:.2%} of the fraud value**" in README
+    assert f"**It froze {model_row['share_of_fraud_value_stopped']:.2%} of the fraud value immediately after it posted**" in README
     assert "**Every figure here comes from a simulator" in README
 
 

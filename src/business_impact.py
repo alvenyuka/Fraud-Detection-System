@@ -83,6 +83,56 @@ def screening_outcome(flagged, is_fraud, amount) -> dict:
     }
 
 
+def fraud_by_type(test_df) -> dict:
+    """Count and value of the test-window fraud, split by transaction type.
+
+    Unlike `screening_outcome`, this does not depend on the model: it is the raw mix of
+    fraud in the holdout, TRANSFER against CASH_OUT, before any screen is applied.
+    """
+    fraud_rows = test_df[test_df["isFraud"] == 1]
+    total_frauds = int(len(fraud_rows))
+    total_value = float(fraud_rows["amount"].sum())
+
+    breakdown = {}
+    for txn_type in ("TRANSFER", "CASH_OUT"):
+        type_rows = fraud_rows[fraud_rows["type"] == txn_type]
+        frauds = int(len(type_rows))
+        value = float(type_rows["amount"].sum())
+        if total_frauds:
+            share_of_frauds = frauds / total_frauds
+        else:
+            share_of_frauds = 0.0
+        if total_value:
+            share_of_value = value / total_value
+        else:
+            share_of_value = 0.0
+        dest_untouched = bool((type_rows["oldbalanceDest"] == 0).all() and (type_rows["newbalanceDest"] == 0).all())
+        breakdown[txn_type] = {
+            "frauds": frauds,
+            "fraud_value": value,
+            "share_of_frauds": share_of_frauds,
+            "share_of_fraud_value": share_of_value,
+            "dest_balance_always_zero": dest_untouched,
+        }
+    return breakdown
+
+
+def linked_transfer_cashout_accounts(test_df) -> int:
+    """How many accounts receive a fraud TRANSFER and also send a fraud CASH_OUT.
+
+    This is the one check for whether the data itself shows a transfer-then-cash-out
+    chain (the scenario "freeze a TRANSFER before cash-out" assumes). A fraud TRANSFER's
+    destination account (`nameDest`) matching a fraud CASH_OUT's origin account
+    (`nameOrig`) in the same test window would be such a chain.
+    """
+    fraud_rows = test_df[test_df["isFraud"] == 1]
+    transfer_rows = fraud_rows[fraud_rows["type"] == "TRANSFER"]
+    cash_out_rows = fraud_rows[fraud_rows["type"] == "CASH_OUT"]
+    transfer_dest_accounts = set(transfer_rows["nameDest"])
+    cash_out_orig_accounts = set(cash_out_rows["nameOrig"])
+    return len(transfer_dest_accounts & cash_out_orig_accounts)
+
+
 def at_prevalence(outcome: dict, n_honest: int, prevalence: float, per: int = 1_000_000) -> dict:
     """Restate one screen's results for `per` transactions at a given fraud rate.
 
@@ -141,11 +191,11 @@ def plot(results: dict, path: Path, n_transactions: int) -> None:
         stopped.append(results[name]["fraud_value_stopped"] / 1e9)
         missed.append(results[name]["fraud_value_missed"] / 1e9)
     fig, ax = plt.subplots(figsize=(8.5, 4.2))
-    ax.barh(names, stopped, color="#2b6cb0", label="Fraud value stopped")
+    ax.barh(names, stopped, color="#2b6cb0", label="Fraud value frozen")
     ax.barh(names, missed, left=stopped, color="#c53030", label="Fraud value let through")
     for i, name in enumerate(names):
         r = results[name]
-        label = f"{r['share_of_fraud_value_stopped']:.2%} stopped, {r['honest_transactions_frozen']:,} honest frozen"
+        label = f"{r['share_of_fraud_value_stopped']:.2%} frozen, {r['honest_transactions_frozen']:,} honest frozen"
         ax.text(stopped[i] + missed[i] + 0.05, i, label, va="center", fontsize=9, color="#2d3748")
     ax.set_xlabel("Billions of PaySim simulated units")
     ax.set_xlim(0, (stopped[0] + missed[0]) * 1.9)
@@ -197,6 +247,8 @@ def main() -> None:
     real_rate = float(df["isFraud"].mean())  # TRANSFER and CASH_OUT, every step
     n_honest = int((fraud == 0).sum())
     realistic = at_prevalence(results[operating_key], n_honest, real_rate)
+    type_split = fraud_by_type(test)
+    linked_accounts = linked_transfer_cashout_accounts(test)
     out = ROOT / "dashboard" / "data" / "business_impact.json"
     out.write_text(json.dumps({
         "population": f"{len(test):,} TRANSFER and CASH_OUT transactions after step {SPLIT_STEP}",
@@ -207,6 +259,8 @@ def main() -> None:
         "results": results,
         "lower_vs_higher_threshold": trade_off,
         "precision_at_real_fraud_rate": realistic,
+        "fraud_by_type": type_split,
+        "linked_transfer_cashout_accounts": linked_accounts,
     }, indent=2))
     (ROOT / "figures").mkdir(exist_ok=True)
     # The chart leaves out "No screening": its bar would dwarf the others.
@@ -229,6 +283,10 @@ def main() -> None:
     print(f"At the whole-simulation fraud rate ({real_rate:.2%}), per million screened transactions: "
           f"{realistic['frauds_caught']:,.0f} frauds caught, {realistic['false_alarms']:,.0f} false alarms, "
           f"precision {realistic['precision']:.1%}")
+    for txn_type, stats in type_split.items():
+        print(f"{txn_type} fraud: {stats['frauds']:,} ({stats['share_of_frauds']:.1%} of frauds), "
+              f"{stats['fraud_value']:,.2f} units ({stats['share_of_fraud_value']:.1%} of fraud value)")
+    print(f"accounts receiving a fraud TRANSFER that also send a fraud CASH_OUT: {linked_accounts}")
     print(f"wrote {out.relative_to(ROOT)} and figures/fraud_value_stopped.png")
 
 

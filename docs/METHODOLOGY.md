@@ -164,7 +164,7 @@ headroom.
 - Feature importance, probability spread, and threshold/cost trade-off diagnostics (`src/explain.py`)
 - Live dashboard for scoring, performance review, batch scoring, and monitoring (`dashboard/app.py`)
 - Time-based train/test split at step 490, so no training row comes from after the test window
-- Balance-discrepancy feature engineering. The sender side dominates: `orig_balance_discrepancy` carries 51.8% of mean |SHAP| attribution and `orig_drain_ratio` 25.1%, so the two sender-side features carry 76.9% between them (`dashboard/data/feature_importance.json`)
+- Balance-discrepancy feature engineering. The sender side dominates: `orig_balance_discrepancy` carries 51.8% of mean |SHAP| attribution and `orig_drain_ratio` 25.1%, so the two sender-side features carry 76.9% between them (`dashboard/data/feature_importance.json`). Only `orig_balance_discrepancy` and `dest_balance_discrepancy` (3.9%) — 55.7% combined — actually need the *posted* balances (`orig_drain_ratio` uses pre-transfer figures alone); that's still enough that the model as shipped only runs post-posting, not as a pre-authorization block — see README "What this project does" for the exact split, including the `TRANSFER`/`CASH_OUT` distinction
 - SHAP attribution (2,000-row representative sample; stable across seeds)
 - Teaching notebook comparing a readable two-question tree and four model families, on the notebook's own feature set
 - Inference script `src/predict.py`: scores a transaction or full CSV

@@ -39,9 +39,25 @@ def code(text):
 md("""
 # Detecting Fraud in Mobile-Money Transfers: a Guided Build
 
-**The question.** A mobile-money operator freezes a transfer when it looks fraudulent. Which transfers are
-fraudulent, how much of the fraud value can a model stop, and how many honest customers does it freeze to do
-so?
+**The question.** A mobile-money operator freezes a transfer's funds once it looks fraudulent. Which transfers
+are fraudulent, how much of the fraud value can a model catch the moment it posts, and how many honest
+customers does it freeze to do so?
+
+**A note on timing.** The feature that matters most here (Step 3.6's `orig_balance_discrepancy`, plus the
+smaller `dest_balance_discrepancy`) needs the sender's and recipient's balances *after* the transfer has
+posted — PaySim only records those once the ledger updates. So this model only runs once a transfer has
+posted, not before; it flags transactions that already happened, it does not block one from happening. What
+to do with that flag depends on the transaction type. A fraudulent `TRANSFER` is the case for seizing the
+funds before they're cashed out, but this dataset has nothing to confirm that a seizure window actually
+exists: every fraud `TRANSFER` row in this 1,377-row holdout shows the destination balance at 0 both before
+and after, and no fraud `TRANSFER` and fraud `CASH_OUT` in the holdout share an account
+(`src/business_impact.py`'s `dest_balance_always_zero` and `linked_transfer_cashout_accounts`) — so there is
+no linked transfer-then-cash-out case to point to. "Freeze before cash-out" is the operational
+use the flag is built for, not something this data demonstrates. A fraudulent `CASH_OUT` is more clear-cut:
+the scored row *is* the withdrawal, so the cash is already gone and the useful action is flagging it for
+recovery, not prevention. The two types split the fraud almost exactly evenly — 1,377 `TRANSFER` and 1,377
+`CASH_OUT`, 50.6% / 49.4% of the value (`src/business_impact.py`'s `fraud_by_type`; Step 3.2 onward scores both
+without separating them).
 
 **The data.** PaySim, a public simulator built from one month of logs of a mobile-money service in an African
 country (Lopez-Rojas, Elmir and Axelsson, 2016, on [Kaggle](https://www.kaggle.com/datasets/ealaxi/paysim1)):
@@ -56,10 +72,11 @@ mistakes, test the model period by period, explain single decisions, and finish 
 stops and the honest customers it freezes.
 
 **The finished result.** On the 132,136 test transactions after hour 490, XGBoost with a class weight, the
-model this notebook carries forward, reaches a PR-AUC of 0.9989. At the cheapest cut-off it stops 99.90% of the fraud
-value and freezes 2 honest customers; PaySim's own built-in flag stops 1.11%. The shipped model in `src/`, built
-on the same ideas with fewer inputs, catches 2,742 of 2,754 frauds and freezes 3 honest transfers (Step 3.6 reads
-those figures from its output files).
+model this notebook carries forward, reaches a PR-AUC of 0.9989. At the cheapest cut-off it freezes 99.90% of
+the fraud value immediately after it posts (before cash-out or, for `CASH_OUT` fraud, for recovery — see the
+timing note above) and freezes 2 honest customers; PaySim's own built-in flag freezes 1.11%. The
+shipped model in `src/`, built on the same ideas with fewer inputs, catches 2,742 of 2,754 frauds and freezes 3
+honest transfers (Step 3.6 reads those figures from its output files).
 
 **How to use this notebook.** Run it from the top. Each step has three parts: a short explanation with one
 **Concept** line, one small code cell, and a **Check your work** cell. If a Check cell fails, the step above it
@@ -2699,8 +2716,8 @@ assert shipped_holdout["frauds_caught"] == 2_742 and shipped_holdout["false_alar
 """)
 
 md("""
-The shipped model catches 2,742 of the 2,754 test frauds, raises 3 false alarms, and stops 99.98% of the fraud
-value, with five inputs and no raw balances. How it differs from this notebook:
+The shipped model catches 2,742 of the 2,754 test frauds, raises 3 false alarms, and freezes 99.98% of the
+fraud value immediately after it posts, with five inputs and no raw balances. How it differs from this notebook:
 
 | | This notebook | Shipped pipeline (`src/`) |
 |---|---|---|
@@ -2916,12 +2933,18 @@ md("""
   families and a resampling check scored the same way (Part 2).
 - Two cut-off policies, and precision restated at the real fraud rate (93.4%).
 - A period-by-period check and SHAP explanations of single decisions.
-- A business-impact table: XGBoost stops 99.90% of the test-window fraud value and freezes 2 honest customers at
-  the cheapest cut-off, against 1.11% for the built-in flag (Part 3).
+- A business-impact table: XGBoost freezes 99.90% of the test-window fraud value immediately after it posts
+  and freezes 2 honest customers at the cheapest cut-off, against 1.11% for the built-in flag (Part 3).
 - A results file with a run record, so every number above can be traced.
 
 ## Limitations
 
+- **This is a post-posting check, not a pre-authorization block.** The largest feature needs the posted
+  sender/recipient balances, which only exist once a transfer has gone through (see the timing note at the
+  top). It cannot prevent a transfer from completing; "freeze before cash-out" for a `TRANSFER` is the
+  operational use the flag is meant for, not something demonstrated in this data (see the timing note), and
+  for a `CASH_OUT` — 49.4% of the fraud value — the cash is already gone by the time the row is scored, so the
+  action there is recovery, not prevention.
 - **PaySim is a simulator, and no real operator's data was used.** With the ledger errors and the raw balances, its fraud labels follow almost
   exactly, which is why a random forest reaches PR-AUC 1.0000. The scores show that the method works; they say nothing
   about the accuracy to expect on a real network.

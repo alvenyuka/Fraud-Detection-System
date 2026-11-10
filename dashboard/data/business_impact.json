@@ -57,5 +57,22 @@
     "frauds_caught": 2951.6268203089408,
     "false_alarms": 23.118411891352665,
     "precision": 0.9922284397194402
-  }
+  },
+  "fraud_by_type": {
+    "TRANSFER": {
+      "frauds": 1377,
+      "fraud_value": 2118643630.16,
+      "share_of_frauds": 0.5,
+      "share_of_fraud_value": 0.5055448449695918,
+      "dest_balance_always_zero": true
+    },
+    "CASH_OUT": {
+      "frauds": 1377,
+      "fraud_value": 2072168819.5,
+      "share_of_frauds": 0.5,
+      "share_of_fraud_value": 0.49445515503040816,
+      "dest_balance_always_zero": false
+    }
+  },
+  "linked_transfer_cashout_accounts": 0
 }
